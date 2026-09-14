@@ -3,9 +3,12 @@ import { useEventStats } from '../api/dashboard';
 import { useEvent } from '../api/events';
 import { useCancelEvent } from '../api/organizer';
 import { useEventRegistrations, type ParticipantDto } from '../api/registrations';
+import ConfirmDialog from '../components/ConfirmDialog';
+import EmptyState from '../components/EmptyState';
 import ErrorMessage from '../components/ErrorMessage';
 import Loading from '../components/Loading';
 import { useEventRealtime } from '../realtime/useEventRealtime';
+import { useState } from 'react';
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -21,7 +24,9 @@ function StatCard({ label, value }: { label: string; value: number }) {
 }
 
 function RegisteredTable({ rows }: { rows: ParticipantDto[] }) {
-  if (rows.length === 0) return <p className="muted">No registered participants.</p>;
+  if (rows.length === 0) {
+    return <EmptyState title="No registered participants yet" />;
+  }
   return (
     <div className="table-wrap">
       <table className="table">
@@ -63,7 +68,7 @@ function RegisteredTable({ rows }: { rows: ParticipantDto[] }) {
 }
 
 function WaitlistTable({ rows }: { rows: ParticipantDto[] }) {
-  if (rows.length === 0) return <p className="muted">Waitlist is empty.</p>;
+  if (rows.length === 0) return <EmptyState title="Waitlist is empty" />;
   return (
     <div className="table-wrap">
       <table className="table">
@@ -101,18 +106,12 @@ export default function OrganizerDashboardPage() {
   const stats = useEventStats(eventId);
   const registrations = useEventRegistrations(eventId);
   const cancel = useCancelEvent();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Live updates over Socket.IO (subscribe/reconnect/cleanup handled inside).
   useEventRealtime(eventId);
 
   function handleCancelEvent() {
-    if (!event.data) return;
-    const confirmed = window.confirm(
-      `Cancel "${event.data.title}"?\n\nAll registered and waitlisted participants ` +
-        `will be notified by email and lose their spots. The event stays visible in ` +
-        `history but can no longer accept registrations or check-ins. This cannot be undone.`,
-    );
-    if (!confirmed) return;
     cancel.mutate(eventId, {
       onSuccess: () =>
         navigate('/organizer', {
@@ -173,7 +172,7 @@ export default function OrganizerDashboardPage() {
               type="button"
               className="btn btn--sm btn--danger"
               disabled={cancel.isPending}
-              onClick={handleCancelEvent}
+              onClick={() => setConfirmOpen(true)}
             >
               {cancel.isPending ? 'Cancelling…' : 'Cancel event'}
             </button>
@@ -221,6 +220,25 @@ export default function OrganizerDashboardPage() {
 
       <h2 className="section-title">Waitlist</h2>
       {regs && <WaitlistTable rows={regs.waitlisted} />}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={`Cancel "${ev?.title ?? 'event'}"?`}
+        danger
+        confirmLabel="Cancel event"
+        cancelLabel="Keep event"
+        busy={cancel.isPending}
+        message={
+          <p>
+            All registered and waitlisted participants will be notified by email
+            and lose their spots. The event stays visible in history but can no
+            longer accept registrations or check-ins. <strong>This cannot be
+            undone.</strong>
+          </p>
+        }
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={handleCancelEvent}
+      />
     </section>
   );
 }

@@ -5,9 +5,11 @@ import {
   useUpdateEvent,
   type EventInput,
 } from '../api/organizer';
+import ConfirmDialog from '../components/ConfirmDialog';
 import EventForm from '../components/EventForm';
 import ErrorMessage from '../components/ErrorMessage';
 import Loading from '../components/Loading';
+import { useState } from 'react';
 
 export default function OrganizerEditEventPage() {
   const { eventId = '' } = useParams();
@@ -15,6 +17,7 @@ export default function OrganizerEditEventPage() {
   const event = useEvent(eventId);
   const update = useUpdateEvent(eventId);
   const cancel = useCancelEvent();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (event.isLoading) return <Loading message="Loading event…" />;
   if (event.isError) {
@@ -38,12 +41,6 @@ export default function OrganizerEditEventPage() {
   }
 
   function handleCancelEvent() {
-    const confirmed = window.confirm(
-      `Cancel "${ev.title}"?\n\nAll registered and waitlisted participants will be ` +
-        `notified by email and lose their spots. The event stays visible in history ` +
-        `but can no longer accept registrations or check-ins. This cannot be undone.`,
-    );
-    if (!confirmed) return;
     cancel.mutate(eventId, {
       onSuccess: () =>
         navigate('/organizer', {
@@ -92,7 +89,7 @@ export default function OrganizerEditEventPage() {
             type="button"
             className="btn btn--danger"
             disabled={cancel.isPending}
-            onClick={handleCancelEvent}
+            onClick={() => setConfirmOpen(true)}
           >
             {cancel.isPending ? 'Cancelling…' : 'Cancel event'}
           </button>
@@ -101,6 +98,25 @@ export default function OrganizerEditEventPage() {
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={`Cancel "${ev.title}"?`}
+        danger
+        confirmLabel="Cancel event"
+        cancelLabel="Keep event"
+        busy={cancel.isPending}
+        message={
+          <p>
+            All registered and waitlisted participants will be notified by email
+            and lose their spots. The event stays visible in history but can no
+            longer accept registrations or check-ins. <strong>This cannot be
+            undone.</strong>
+          </p>
+        }
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={handleCancelEvent}
+      />
     </section>
   );
 }

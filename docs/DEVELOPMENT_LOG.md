@@ -4,6 +4,30 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 01:02 KST — Phase A14: Role-specific navigation & UI polish
+
+Reworked navigation to be role-aware and polished shared UI. No backend changes. No git commit.
+
+### Navigation & role-specific layout
+- **Role-aware header** (`Layout`): the nav renders **only** the current role's links.
+  - Participant: **Events · My Registrations · Profile · Logout**
+  - Organizer: **Dashboard · Create Event · Logout**
+  - Logged-out: Events · Log in · Sign up.
+- **Always-visible identity (req. 1):** the header shows the signed-in email plus a colored **role chip** (PARTICIPANT / ORGANIZER), so the active account/role is always clear. Active link is underlined via `NavLink`.
+- **No cross-role exposure (reqs. 2, 3):** organizer links never render for participants and vice-versa; routes remain guarded by `RequireRole`, so it's enforced, not just hidden.
+- **Split participant area** to match the nav: `/participant` (Events), `/participant/registrations` (My Registrations, with ticket cards), `/participant/profile` (Profile) — replacing the single combined dashboard. Removed the stray organizer links from the public home page.
+
+### UI polish (req. 6)
+- **New shared components:** `StatusBadge` (consistent REGISTERED/WAITLISTED/CANCELLED styling), `EmptyState` (used across events, registrations, organizer list, and both dashboard tables), and a **`ConfirmDialog` modal** that replaces every `window.confirm` (organizer event cancel on the dashboard, edit page, and events-list card; participant registration cancel) — with clear, danger-styled copy explaining participant impact.
+- **Buttons/tables/badges/empty states/errors:** added a danger button variant, role chips, modal styling, definition-list (profile), consistent empty states, and kept the shared `ErrorMessage` for error surfacing.
+
+### Checks
+- `npm run typecheck` (`tsc -b`) → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (41 files).
+- Full `vite build` not re-run this iteration (declined); `tsc -b` validates compilation, bundler config unchanged.
+
+---
+
 ## 2026-09-15 00:53 KST — Phase A13: Organizer check-in experience
 
 Improved the check-in screen and moved it under the organizer event path. No git commit.

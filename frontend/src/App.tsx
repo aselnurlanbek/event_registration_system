@@ -10,8 +10,10 @@ import OrganizerCreateEventPage from './pages/OrganizerCreateEventPage';
 import OrganizerDashboardPage from './pages/OrganizerDashboardPage';
 import OrganizerEditEventPage from './pages/OrganizerEditEventPage';
 import OrganizerEventsPage from './pages/OrganizerEventsPage';
-import ParticipantDashboardPage from './pages/ParticipantDashboardPage';
 import ParticipantEventDetailPage from './pages/ParticipantEventDetailPage';
+import ParticipantEventsPage from './pages/ParticipantEventsPage';
+import ParticipantProfilePage from './pages/ParticipantProfilePage';
+import ParticipantRegistrationsPage from './pages/ParticipantRegistrationsPage';
 import RegisterPage from './pages/RegisterPage';
 
 export default function App() {
@@ -26,7 +28,15 @@ export default function App() {
 
         {/* Participant-only */}
         <Route element={<RequireRole role="PARTICIPANT" />}>
-          <Route path="/participant" element={<ParticipantDashboardPage />} />
+          <Route path="/participant" element={<ParticipantEventsPage />} />
+          <Route
+            path="/participant/registrations"
+            element={<ParticipantRegistrationsPage />}
+          />
+          <Route
+            path="/participant/profile"
+            element={<ParticipantProfilePage />}
+          />
           <Route
             path="/participant/events/:eventId"
             element={<ParticipantEventDetailPage />}

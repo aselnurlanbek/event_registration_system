@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEventStats } from '../api/dashboard';
 import { useCancelEvent, useMyEvents } from '../api/organizer';
+import ConfirmDialog from '../components/ConfirmDialog';
+import EmptyState from '../components/EmptyState';
 import ErrorMessage from '../components/ErrorMessage';
 import Loading from '../components/Loading';
 import type { EventDto } from '../types';
@@ -13,17 +16,8 @@ function OrganizerEventCard({ event }: { event: EventDto }) {
   const stats = useEventStats(event.id);
   const cancel = useCancelEvent();
   const navigate = useNavigate();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const isActive = event.status === 'ACTIVE';
-
-  function handleCancel() {
-    if (
-      window.confirm(
-        `Cancel "${event.title}"? Registered participants will be notified. This cannot be undone.`,
-      )
-    ) {
-      cancel.mutate(event.id);
-    }
-  }
 
   return (
     <li className="card">
@@ -75,13 +69,32 @@ function OrganizerEventCard({ event }: { event: EventDto }) {
               type="button"
               className="btn btn--sm btn--ghost"
               disabled={cancel.isPending}
-              onClick={handleCancel}
+              onClick={() => setConfirmOpen(true)}
             >
               {cancel.isPending ? 'Cancelling…' : 'Cancel'}
             </button>
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={`Cancel "${event.title}"?`}
+        danger
+        confirmLabel="Cancel event"
+        cancelLabel="Keep event"
+        busy={cancel.isPending}
+        message={
+          <p>
+            All registered and waitlisted participants will be notified and lose
+            their spots. This cannot be undone.
+          </p>
+        }
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() =>
+          cancel.mutate(event.id, { onSuccess: () => setConfirmOpen(false) })
+        }
+      />
     </li>
   );
 }
@@ -111,9 +124,11 @@ export default function OrganizerEventsPage() {
       ) : events.isError ? (
         <ErrorMessage error={events.error} onRetry={() => events.refetch()} />
       ) : !events.data || events.data.length === 0 ? (
-        <div className="placeholder">
-          No events yet. Create your first event.
-        </div>
+        <EmptyState title="No events yet. Create your first event.">
+          <Link className="btn btn--sm" to="/organizer/events/new">
+            Create Event
+          </Link>
+        </EmptyState>
       ) : (
         <ul className="card-list">
           {events.data.map((event) => (

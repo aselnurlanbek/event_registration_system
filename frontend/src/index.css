@@ -77,10 +77,130 @@ a:hover {
 }
 .app-nav__link {
   font-size: 0.9rem;
+  color: var(--text);
+  padding: 0.25rem 0;
+  border-bottom: 2px solid transparent;
 }
-.app-nav__user {
+.app-nav__link:hover {
+  text-decoration: none;
+  color: var(--primary);
+}
+.app-nav__link--active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+.app-nav__account {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-left: 0.5rem;
+  margin-left: 0.25rem;
+  border-left: 1px solid var(--border);
+}
+.app-nav__email {
   font-size: 0.85rem;
   color: var(--muted);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.role-chip {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.role-chip--participant {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+.role-chip--organizer {
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-color: #ddd6fe;
+}
+
+/* Modal / confirmation dialog */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 40, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  max-width: 420px;
+  width: 100%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+.modal__title {
+  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+}
+.modal__body {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 1.25rem;
+}
+
+/* Empty state */
+.empty-state {
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 2rem 1.5rem;
+  text-align: center;
+  color: var(--muted);
+}
+.empty-state__title {
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 0.35rem;
+}
+.empty-state__action {
+  margin-top: 1rem;
+}
+
+/* Definition/detail list (profile, etc.) */
+.detail-list {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+.detail-list__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.detail-list__row:last-child {
+  border-bottom: none;
+}
+.detail-list dt {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.detail-list dd {
+  margin: 0;
+  font-weight: 500;
 }
 
 /* Auth forms */
