@@ -4,6 +4,32 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 22:53 KST — Phase 12: Organizer dashboard with live stats (/organizer/events/:eventId)
+
+Implemented the organizer dashboard: REST for initial data, Socket.IO for live updates. No git commit.
+
+### What was implemented
+- **Summary cards** — Capacity, Registered, Waitlisted, Checked In (from `GET /api/events/:id/stats`).
+- **Registered table** — email, registration time, checked-in status (timestamp badge or "Not checked in").
+- **Waitlist table** — position (`waitlistPos`), email, joined-waitlist time (from `GET /api/events/:id/registrations`).
+- New hooks: `useEventStats` (`api/dashboard.ts`), `useEventRegistrations` + `ParticipantDto` (`api/registrations.ts`).
+- **Realtime hook `useEventRealtime(eventId)`** (`realtime/useEventRealtime.ts`):
+  - Subscribes to the `event:{eventId}` room and listens for `event.stats.updated`.
+  - On each event: `setQueryData` updates the stats cards instantly from the snapshot, and invalidates the registrations query so the tables refetch from REST.
+  - **Reconnect-safe:** on the socket `connect` event (initial + every reconnect) it re-subscribes to the room and invalidates BOTH queries → refetches current state from REST rather than assuming no events were missed.
+  - **Cleanup:** removes the `event.stats.updated` and `connect` listeners and unsubscribes from the room on unmount.
+
+### Multi-tab behavior
+Each open tab has its own socket connection joined to the same room, so a single backend broadcast reaches all of them. Any state change the backend emits after — a registration, cancellation, waitlist promotion, or check-in (all wired to broadcast in Phase 7) — updates every open dashboard tab. No client-side capacity logic; the backend snapshot is authoritative.
+
+### Checks
+- `npm run typecheck` → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (21 files).
+- `npm run build` → success.
+- Live two-tab behavior not exercised in an automated run here; the backend side is covered by Phase 7's two-client e2e test, and the client wiring (subscribe / snapshot-apply / reconnect-refetch / unmount-cleanup) is implemented per requirements.
+
+---
+
 ## 2026-09-14 22:49 KST — Phase 11: Participant registration page (/events/:eventId)
 
 Implemented the participant-facing registration UI. No git commit.
