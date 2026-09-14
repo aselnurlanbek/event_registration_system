@@ -20,6 +20,7 @@ model Event {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   registrations  Registration[]
+  emailLogs      EmailLog[]
 }
 
 enum RegistrationStatus {
@@ -54,20 +55,28 @@ model Ticket {
 }
 
 enum EmailType {
-  TICKET
-  REMINDER
-  RESCHEDULE
+  REGISTRATION_TICKET
+  WAITLIST_PROMOTED
+  EVENT_REMINDER
+  EVENT_RESCHEDULED
 }
 
+// Mock email outbox + idempotency ledger. A row IS the record of a (would-be)
+// sent email; the unique deduplicationKey makes recording exactly-once.
 model EmailLog {
-  id             String       @id @default(cuid())
-  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
-  registrationId String
-  type           EmailType
-  // For RESCHEDULE (can repeat) the key carries a discriminator; for
-  // TICKET/REMINDER the natural key alone must be unique (exactly-once).
-  dedupeKey      String // e.g. "TICKET", "REMINDER", "RESCHEDULE:<startsAtISO>"
-  sentAt         DateTime     @default(now())
+  id               String       @id @default(cuid())
+  recipient        String
+  event            Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId          String
+  registration     Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  registrationId   String
+  type             EmailType
+  // Deterministic per logical notification, e.g. "registration-ticket:{regId}",
+  // "waitlist-promoted:{regId}", "event-reminder:{eventId}:{regId}".
+  deduplicationKey String       @unique // exactly-once guard (reqs. 5, 6)
+  payload          Json
+  sentAt           DateTime     @default(now())
 
-  @@unique([registrationId, dedupeKey]) // exactly-once email guard (reqs. 5, 6, 9)
+  @@index([eventId])
+  @@index([registrationId])
 }

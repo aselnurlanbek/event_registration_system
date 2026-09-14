@@ -5,6 +5,7 @@
  */
 import 'dotenv/config';
 import { RegistrationStatus } from '@prisma/client';
+import { EmailService } from '../email/email.service';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeStatsService } from '../realtime/realtime-stats.service';
@@ -22,10 +23,12 @@ describe('RegistrationsService cancellation (integration, real Postgres)', () =>
   beforeAll(async () => {
     prisma = new PrismaService();
     await prisma.$connect();
+    const email = new EmailService(prisma);
     service = new RegistrationsService(
       prisma,
-      new EventsService(prisma),
+      new EventsService(prisma, email),
       realtimeStub,
+      email,
     );
   });
 

@@ -1,6 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Event } from '@prisma/client';
+import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 
@@ -26,7 +27,10 @@ describe('EventsService', () => {
       findUnique: jest.Mock;
       update: jest.Mock;
     };
+    registration: { findMany: jest.Mock };
+    $transaction: jest.Mock;
   };
+  let email: { recordInTx: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -36,12 +40,17 @@ describe('EventsService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      registration: { findMany: jest.fn().mockResolvedValue([]) },
+      // Run the interactive-transaction callback with prisma itself as `tx`.
+      $transaction: jest.fn((cb: (tx: unknown) => unknown) => cb(prisma)),
     };
+    email = { recordInTx: jest.fn().mockResolvedValue(0) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EventsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: EmailService, useValue: email },
       ],
     }).compile();
 
@@ -127,22 +136,41 @@ describe('EventsService', () => {
       });
     });
 
-    it('detects a reschedule when startsAt changes (no email yet)', async () => {
+    it('records EVENT_RESCHEDULED emails to registered participants when startsAt changes', async () => {
       const existing = mockEvent();
       const updated = mockEvent({
         startsAt: new Date('2026-11-01T18:00:00.000Z'),
       });
       prisma.event.findUnique.mockResolvedValue(existing);
       prisma.event.update.mockResolvedValue(updated);
-      const logSpy = jest
-        .spyOn(service['logger'], 'log')
-        .mockImplementation(() => undefined);
+      prisma.registration.findMany.mockResolvedValue([
+        { id: 'reg_1', email: 'a@example.com' },
+      ]);
 
       await service.update('evt_1', { startsAt: '2026-11-01T18:00:00.000Z' });
 
-      expect(logSpy).toHaveBeenCalledWith(
-        expect.stringContaining('rescheduled'),
+      expect(email.recordInTx).toHaveBeenCalledWith(
+        prisma,
+        [
+          expect.objectContaining({
+            type: 'EVENT_RESCHEDULED',
+            recipient: 'a@example.com',
+            registrationId: 'reg_1',
+            deduplicationKey:
+              'event-rescheduled:evt_1:reg_1:2026-11-01T18:00:00.000Z',
+          }),
+        ],
       );
+    });
+
+    it('does not record reschedule emails when startsAt is unchanged', async () => {
+      const existing = mockEvent();
+      prisma.event.findUnique.mockResolvedValue(existing);
+      prisma.event.update.mockResolvedValue(existing);
+
+      await service.update('evt_1', { title: 'Renamed' });
+
+      expect(email.recordInTx).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when updating a missing event', async () => {

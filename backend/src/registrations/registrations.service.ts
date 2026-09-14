@@ -1,6 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma, Registration, RegistrationStatus, Ticket } from '@prisma/client';
+import {
+  EmailType,
+  Prisma,
+  Registration,
+  RegistrationStatus,
+  Ticket,
+} from '@prisma/client';
 import { randomBytes } from 'node:crypto';
+import { EmailService } from '../email/email.service';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeStatsService } from '../realtime/realtime-stats.service';
@@ -29,6 +36,7 @@ export class RegistrationsService {
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
     private readonly realtime: RealtimeStatsService,
+    private readonly email: EmailService,
   ) {}
 
   /**
@@ -76,7 +84,17 @@ export class RegistrationsService {
       const hasCapacity = registeredCount < capacity;
 
       if (hasCapacity) {
-        return this.upsertRegistered(tx, eventId, email, existing);
+        const reg = await this.upsertRegistered(tx, eventId, email, existing);
+        // REGISTRATION_TICKET on becoming REGISTERED via normal registration.
+        await this.email.recordInTx(tx, {
+          type: EmailType.REGISTRATION_TICKET,
+          recipient: email,
+          eventId,
+          registrationId: reg.id,
+          deduplicationKey: `registration-ticket:${reg.id}`,
+          payload: { ticketCode: reg.ticket?.code ?? null },
+        });
+        return reg;
       }
       return this.upsertWaitlisted(tx, eventId, email, existing);
     });
@@ -176,7 +194,7 @@ export class RegistrationsService {
     }
 
     const code = this.generateTicketCode();
-    return tx.registration.update({
+    const promoted = await tx.registration.update({
       where: { id: head.id },
       data: {
         status: RegistrationStatus.REGISTERED,
@@ -186,6 +204,18 @@ export class RegistrationsService {
       },
       include: { ticket: true },
     });
+
+    // WAITLIST_PROMOTED email, recorded inside the same transaction.
+    await this.email.recordInTx(tx, {
+      type: EmailType.WAITLIST_PROMOTED,
+      recipient: promoted.email,
+      eventId,
+      registrationId: promoted.id,
+      deduplicationKey: `waitlist-promoted:${promoted.id}`,
+      payload: { ticketCode: promoted.ticket?.code ?? null },
+    });
+
+    return promoted;
   }
 
   /** List registered + waitlisted participants with counts. */

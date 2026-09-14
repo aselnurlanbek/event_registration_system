@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Event } from '@prisma/client';
+import { Event, EmailType, Prisma, RegistrationStatus } from '@prisma/client';
+import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -8,7 +9,10 @@ import { UpdateEventDto } from './dto/update-event.dto';
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+  ) {}
 
   async create(dto: CreateEventDto): Promise<Event> {
     return this.prisma.event.create({
@@ -45,33 +49,59 @@ export class EventsService {
       newStartsAt !== undefined &&
       newStartsAt.getTime() !== existing.startsAt.getTime();
 
-    const updated = await this.prisma.event.update({
-      where: { id },
-      data: {
-        title: dto.title,
-        description: dto.description,
-        startsAt: newStartsAt,
-        capacity: dto.capacity,
-      },
+    // The event update and the reschedule notifications are recorded atomically:
+    // either the date change AND its EVENT_RESCHEDULED emails commit, or neither.
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.event.update({
+        where: { id },
+        data: {
+          title: dto.title,
+          description: dto.description,
+          startsAt: newStartsAt,
+          capacity: dto.capacity,
+        },
+      });
+
+      if (isRescheduled) {
+        await this.notifyReschedule(tx, existing, updated);
+      }
+
+      return updated;
     });
-
-    if (isRescheduled) {
-      this.handleReschedule(existing, updated);
-    }
-
-    return updated;
   }
 
   /**
-   * Reschedule hook. Phase 2 only records that the date/time changed.
-   * Phase 9 will emit an EVENT_RESCHEDULED domain action that notifies
-   * registered participants by email (see docs/ARCHITECTURE.md §4, req. 9).
-   * Intentionally does NOT send email yet.
+   * On a startsAt change, record an EVENT_RESCHEDULED email for every currently
+   * REGISTERED participant (req. 3). The deduplicationKey includes the new
+   * startsAt, so a retry of the same change is idempotent, while a *different*
+   * later reschedule correctly produces a fresh notification.
    */
-  private handleReschedule(previous: Event, updated: Event): void {
-    this.logger.log(
-      `Event ${updated.id} rescheduled from ${previous.startsAt.toISOString()} to ${updated.startsAt.toISOString()} (notification deferred to Phase 9)`,
+  private async notifyReschedule(
+    tx: Prisma.TransactionClient,
+    previous: Event,
+    updated: Event,
+  ): Promise<void> {
+    const registered = await tx.registration.findMany({
+      where: { eventId: updated.id, status: RegistrationStatus.REGISTERED },
+    });
+    const newStartsAtIso = updated.startsAt.toISOString();
+
+    const recorded = await this.email.recordInTx(
+      tx,
+      registered.map((r) => ({
+        type: EmailType.EVENT_RESCHEDULED,
+        recipient: r.email,
+        eventId: updated.id,
+        registrationId: r.id,
+        deduplicationKey: `event-rescheduled:${updated.id}:${r.id}:${newStartsAtIso}`,
+        payload: {
+          previousStartsAt: previous.startsAt.toISOString(),
+          newStartsAt: newStartsAtIso,
+        },
+      })),
     );
-    // TODO(Phase 9): emit EVENT_RESCHEDULED -> EmailModule (RESCHEDULE emails).
+    this.logger.log(
+      `Event ${updated.id} rescheduled → recorded ${recorded} EVENT_RESCHEDULED email(s)`,
+    );
   }
 }

@@ -32,6 +32,7 @@ A `docker-compose.yml` at the repo root provides a Postgres 16 instance as an al
 | `POST` | `/events/:eventId/registrations/cancel` | Cancel by email; auto-promotes the first waitlisted participant |
 | `POST` | `/events/:eventId/check-in` | Check in a ticket (`ticketCode`) — single-use; 200 / 409 / 404 |
 | `GET` | `/events/:eventId/stats` | `{ capacity, registered, waitlisted, checkedIn }` |
+| `GET` | `/dev/emails` | **Development-only** — inspect the mock email outbox (404 in production) |
 
 ## WebSocket API (Socket.IO)
 

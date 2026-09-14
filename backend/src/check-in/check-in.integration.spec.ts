@@ -7,6 +7,7 @@ import 'dotenv/config';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { RegistrationStatus } from '@prisma/client';
 import { DashboardService } from '../dashboard/dashboard.service';
+import { EmailService } from '../email/email.service';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeStatsService } from '../realtime/realtime-stats.service';
@@ -27,9 +28,10 @@ describe('CheckInService (integration, real Postgres)', () => {
   beforeAll(async () => {
     prisma = new PrismaService();
     await prisma.$connect();
-    const events = new EventsService(prisma);
+    const email = new EmailService(prisma);
+    const events = new EventsService(prisma, email);
     checkIn = new CheckInService(prisma, realtimeStub);
-    registrations = new RegistrationsService(prisma, events, realtimeStub);
+    registrations = new RegistrationsService(prisma, events, realtimeStub, email);
     dashboard = new DashboardService(prisma, events);
   });
 

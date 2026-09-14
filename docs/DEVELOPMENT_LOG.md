@@ -4,6 +4,42 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 22:30 KST — Phase 6: Mock email notification system
+
+Added a mock email system (no real provider) that records would-be emails to PostgreSQL as an idempotent outbox. No git commit.
+
+### Schema (migration `20260914140000_email_notifications`)
+Reshaped `EmailLog` to the required fields: `id, recipient, eventId, registrationId, type, deduplicationKey, payload (jsonb), sentAt`, with **`deduplicationKey @unique`** (global unique, req. 5) and indexes on `eventId`/`registrationId`. New `EmailType` enum: `REGISTRATION_TICKET`, `WAITLIST_PROMOTED`, `EVENT_REMINDER`, `EVENT_RESCHEDULED`. Added `Event.emailLogs` relation; cascade-deletes with event/registration.
+- *Migration note:* `prisma migrate dev` refuses to run non-interactively when an enum change carries a data-loss warning. Since the table was empty, generated the SQL with `prisma migrate diff` and applied it via `prisma migrate deploy` (recorded in migration history).
+
+### EmailService & transaction strategy (req. 9)
+- **Transactional outbox.** `EmailService.recordInTx(tx, records)` inserts email rows **inside the same transaction** as the business operation that triggers them. The email record therefore exists **iff** the state change commits — no phantom emails on rollback, no lost emails on success (atomic and consistent).
+- **Idempotency via `createMany({ skipDuplicates: true })`** on the unique `deduplicationKey`. This never throws on a conflict — important because a thrown error inside a Prisma interactive transaction aborts the whole transaction, so a try/catch-on-P2002 approach would be unsafe here. It returns the count of rows actually inserted (0 on a pure retry).
+- A real provider would move the network send to an after-commit worker dispatching unsent outbox rows; here "delivery" is just a log line, and the row itself is the artifact (inspectable via the dev endpoint).
+
+### Notifications wired
+- **REGISTRATION_TICKET** — in `RegistrationsService.register`, inside the registration tx, when a participant becomes REGISTERED. Key `registration-ticket:{registrationId}`.
+- **WAITLIST_PROMOTED** — in `promoteHead`, inside the cancel tx, when a waitlister is promoted. Key `waitlist-promoted:{registrationId}`.
+- **EVENT_RESCHEDULED** — in `EventsService.update`, which now wraps the event update + notifications in one transaction; on a `startsAt` change, records one email per currently REGISTERED participant. Key `event-rescheduled:{eventId}:{registrationId}:{newStartsAtISO}` — includes the new date so a retry of the same change is deduped while a *different* later reschedule sends afresh.
+- (EVENT_REMINDER type exists for the future reminder scheduler; not wired yet.)
+
+### Dev-only endpoint (req. 7)
+- `GET /api/dev/emails` (`DevEmailsController`) lists the outbox newest-first, wrapped with `_warning: "DEVELOPMENT-ONLY endpoint ..."`. Returns **404 when `NODE_ENV=production`**, so it's hidden in prod.
+
+### Tests performed
+`npm test` → **9 suites, 43 tests, all passing** (~5.4s):
+- **`email.idempotency.integration.spec.ts`** (real Postgres, 4): retried registration → exactly one REGISTRATION_TICKET; promotion → one WAITLIST_PROMOTED to the right recipient; reschedule → one EVENT_RESCHEDULED per registered participant, unchanged date → no new email, different date → a second email; direct `recordInTx` → returns 1 then 0 for a duplicate key, one row persists.
+- **`dev-emails.controller.spec.ts`** (unit, 2): dev returns outbox + warning; production → 404.
+- **`events.service.spec.ts`** updated: asserts EVENT_RESCHEDULED recorded on date change (with the composite dedupe key) and none when unchanged.
+- All prior suites still green (service constructors updated to inject a real `EmailService` in integration tests).
+- `npm run build` → exit 0; DB self-cleaned to 0 rows.
+
+### Assumptions
+- Dedupe keys follow the assignment's suggested formats; keying by `registrationId` means re-registering after a cancel reuses the ticket and does not re-send a ticket email.
+- No real delivery — the outbox row is the demonstrable artifact.
+
+---
+
 ## 2026-09-14 22:15 KST — Phase 7: Realtime organizer stats (Socket.IO)
 
 Added live stats broadcasting so the organizer dashboard updates without refresh and across multiple tabs. (Phase 6 / email deferred.) No git commit.
