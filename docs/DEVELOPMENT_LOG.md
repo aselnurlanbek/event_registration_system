@@ -4,6 +4,31 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 22:49 KST — Phase 11: Participant registration page (/events/:eventId)
+
+Implemented the participant-facing registration UI. No git commit.
+
+### What was implemented
+- **`useRegister(eventId)`** — TanStack Query `useMutation` → `POST /api/events/:eventId/registrations` with `{ email }`, typed `RegistrationResult` (`api/registrations.ts`).
+- **`RegistrationForm`** component + wired into `EventDetailPage`, which already shows **title, description, date/time, and capacity** (from `useEvent`).
+- **Result states driven entirely by the backend response** (no capacity logic on the client):
+  - `REGISTERED` → success message, status, and the **ticket code**.
+  - `WAITLISTED` → "event is currently full" + "added to the waitlist" (+ position when present).
+  - other statuses → shows the returned status generically.
+- **Loading / disabled:** submit button shows "Registering…" and both input and button are `disabled` while `mutation.isPending`.
+- **Validation errors:** minimal client-side check (required + email format) shown inline; the button doesn't submit an obviously-invalid email.
+- **Network / backend errors:** any thrown error from `apiFetch` (non-2xx with backend `message`, e.g. a 400 `email must be an email`, or a network failure) is surfaced via the shared `ErrorMessage` component.
+
+### Note on "duplicate registration"
+The backend is **idempotent** for duplicates (Phase 3): re-registering the same email returns the *existing* registration with `200`, not an error. So the UI simply re-displays the current status (REGISTERED/WAITLISTED) — there is no duplicate "error" to show, which is the correct source-of-truth behavior. Genuine errors (validation, 404, network) are still shown clearly via `ErrorMessage`. The frontend reproduces **none** of the capacity/waitlist/duplicate decision logic.
+
+### Checks
+- `npm run typecheck` → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (19 files).
+- `npm run build` → success.
+
+---
+
 ## 2026-09-14 22:45 KST — Phase 10: Frontend foundation (routing, API client, providers)
 
 Built the frontend skeleton on top of the Phase 0 scaffold (React + TS + Vite + TanStack Query + Socket.IO client already present). Added React Router; realtime behavior intentionally left as infrastructure only. No git commit.

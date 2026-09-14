@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useEvent } from '../api/events';
 import ErrorMessage from '../components/ErrorMessage';
 import Loading from '../components/Loading';
+import RegistrationForm from '../components/RegistrationForm';
 
 export default function EventDetailPage() {
   const { eventId = '' } = useParams();
@@ -23,8 +24,9 @@ export default function EventDetailPage() {
       {event.description && <p>{event.description}</p>}
       <p className="muted">Capacity: {event.capacity}</p>
 
-      {/* Registration / waitlist / ticket UI is implemented in a later phase. */}
-      <div className="placeholder">Registration form coming soon.</div>
+      <hr className="divider" />
+
+      <RegistrationForm eventId={event.id} />
     </article>
   );
 }
