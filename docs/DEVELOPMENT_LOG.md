@@ -4,6 +4,31 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:27 KST — Phase A8: Participant dashboard & event pages
+
+Built the participant experience on the account/auth foundation. No git commit.
+
+### What was implemented
+- **`/participant` dashboard** (`ParticipantDashboardPage`):
+  - **Upcoming events** — from `GET /api/events` (active only): title, date/time, description preview (truncated), capacity, and a status badge if the participant already has an active registration; each card links to the event.
+  - **My registrations** — from `GET /api/me/registrations`: event title + date, status badge (REGISTERED / WAITLISTED / CANCELLED), ticket code when REGISTERED, check-in status, and a **Cancel** button when cancellation is allowed (active status + event still ACTIVE). Cancelled events are flagged.
+- **`/participant/events/:eventId`** (`ParticipantEventDetailPage`): title, description, date/time; current registration state; **Register** when not active; **Cancel registration** when active; REGISTERED shows the ticket code + check-in status; WAITLISTED shows position; a cancelled event is called out and disables actions.
+- **Data hooks:** `useMyRegistrations` (`api/me.ts`); `useRegister` now posts with **no body** (identity from the JWT) and `useCancelRegistration` added — both `invalidate` my-registrations + events list + event detail + stats on success, so the UI always reflects backend state (reqs. 6, 7).
+- **States (req. 8):** loading spinners, error components with retry, and empty-state copy for both sections.
+
+### Cleanup from the auth refactor
+- The old public `/events/:eventId` page used an email-typed `RegistrationForm`, which is obsolete now that registration uses account identity. Replaced that page with a **read-only public view** + a context-aware CTA (log in / go to participant registration) and **deleted `RegistrationForm.tsx`**. Removed the placeholder `ParticipantHomePage` (superseded by the dashboard). Added `status` to the frontend `EventDto` (backend now returns it).
+
+### Checks
+- `npm run typecheck` → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (31 files).
+- `npm run build` → success.
+
+### Note
+- Availability counts aren't shown to participants because the stats endpoint is organizer-owner-only; cards show capacity. The backend decides REGISTERED vs WAITLISTED — the UI never computes it.
+
+---
+
 ## 2026-09-15 00:21 KST — Phase A7: Frontend authentication
 
 Added login/register, JWT-backed auth state, protected routes, and role redirects. No git commit.

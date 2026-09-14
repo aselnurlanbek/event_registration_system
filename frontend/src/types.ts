@@ -2,12 +2,15 @@
 
 export type RegistrationStatus = 'REGISTERED' | 'WAITLISTED' | 'CANCELLED';
 
+export type EventStatus = 'ACTIVE' | 'CANCELLED';
+
 export interface EventDto {
   id: string;
   title: string;
   description: string | null;
   startsAt: string; // ISO-8601 (UTC)
   capacity: number;
+  status: EventStatus;
   createdAt: string;
   updatedAt: string;
 }

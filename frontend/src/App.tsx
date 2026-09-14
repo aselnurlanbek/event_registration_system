@@ -8,7 +8,8 @@ import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
 import OrganizerDashboardPage from './pages/OrganizerDashboardPage';
 import OrganizerHomePage from './pages/OrganizerHomePage';
-import ParticipantHomePage from './pages/ParticipantHomePage';
+import ParticipantDashboardPage from './pages/ParticipantDashboardPage';
+import ParticipantEventDetailPage from './pages/ParticipantEventDetailPage';
 import RegisterPage from './pages/RegisterPage';
 
 export default function App() {
@@ -23,7 +24,11 @@ export default function App() {
 
         {/* Participant-only */}
         <Route element={<RequireRole role="PARTICIPANT" />}>
-          <Route path="/participant" element={<ParticipantHomePage />} />
+          <Route path="/participant" element={<ParticipantDashboardPage />} />
+          <Route
+            path="/participant/events/:eventId"
+            element={<ParticipantEventDetailPage />}
+          />
         </Route>
 
         {/* Organizer-only */}
