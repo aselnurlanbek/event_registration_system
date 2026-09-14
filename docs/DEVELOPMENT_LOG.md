@@ -4,6 +4,31 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:02 KST — Phase A3/A5: Organizer event ownership
+
+Added ownership so organizers manage only their own events. Additive; reschedule/registration logic unchanged. No git commit.
+
+### Schema (migration `20260914..._event_organizer`)
+- Added **nullable** `Event.organizerId` (FK → `User`) + `User.events` back-relation + `@@index([organizerId])`. Nullable for backward compat with pre-ownership events.
+
+### Ownership enforcement
+- **`EventOwnerGuard`** (`src/auth/guards/event-owner.guard.ts`): loads the event by the route param (`:eventId` or `:id`), returns `404` if missing, `403` if `event.organizerId !== req.user.userId`. Runs after `JwtAuthGuard` + `RolesGuard(ORGANIZER)`. Injects the global `PrismaService`; no service signatures changed.
+- **Create** (`POST /api/events`, req. 2): ORGANIZER-only; `create(dto, organizerId)` stamps the event with the creator's id.
+- **Owner-only routes** (reqs. 4, 5): `PATCH /api/events/:id`, **`DELETE /api/events/:id`** (new), `GET /api/events/:eventId/registrations`, `GET /api/events/:eventId/stats`, and `POST /api/events/:eventId/check-in` all now require `JwtAuthGuard + RolesGuard(ORGANIZER) + EventOwnerGuard` → a different organizer gets `403`.
+- **`GET /api/organizer/events`** (new, `OrganizerEventsController`, req. 3): returns only the caller's events.
+- **Public reads preserved** (req. 6): `GET /api/events` and `GET /api/events/:id` remain unauthenticated.
+- **Reschedule preserved** (req. 8): `EventsService.update` is untouched; owner PATCH of `startsAt` still records `EVENT_RESCHEDULED` emails (asserted in the test).
+- **Delete** cascades to registrations/tickets/emails via existing `onDelete: Cascade`.
+
+### Tests (req. 7)
+`npm test` → **14 suites, 75 tests, all passing**. New `event-ownership.integration.spec.ts` (HTTP + real Postgres, self-cleaning, 7 cases): create stamps owner; `/organizer/events` scoping (owner sees it, other organizer doesn't); public participant reads still 200; update — unauth 401 / participant 403 / non-owner 403 / owner 200 with `EVENT_RESCHEDULED` email recorded; registrations list + stats restricted to owner (403 vs 200); check-in restricted to owner (403 vs 200); delete — non-owner 403, owner 200 (row gone). Updated `events.service.spec.ts` `mockEvent` for the new `organizerId` field.
+- `npm run build` → exit 0.
+
+### Migration risk (flagged earlier, now live)
+Pre-ownership events (e.g. the earlier demo event) have `organizerId = NULL`, so no organizer can manage them via the owner-guarded routes (they'd 403). A production rollout would seed an organizer + backfill; for this assignment, new events created through the authenticated flow are owned correctly and demo leftovers can be ignored/wiped.
+
+---
+
 ## 2026-09-14 23:53 KST — Phase A4: Account-linked registrations
 
 Connected event registrations to authenticated participant accounts. Additive — the concurrency/waitlist/ticket/promotion core is unchanged. No git commit.

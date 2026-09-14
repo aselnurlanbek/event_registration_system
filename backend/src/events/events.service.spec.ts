@@ -13,6 +13,7 @@ const mockEvent = (overrides: Partial<Event> = {}): Event => ({
   startsAt: new Date('2026-10-01T18:00:00.000Z'),
   capacity: 100,
   reminderSentAt: null,
+  organizerId: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
   ...overrides,

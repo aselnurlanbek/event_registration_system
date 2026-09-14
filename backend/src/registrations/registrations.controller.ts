@@ -10,6 +10,7 @@ import { Role } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AuthUser } from '../auth/auth.types';
+import { EventOwnerGuard } from '../auth/guards/event-owner.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { RegistrationsService } from './registrations.service';
@@ -39,8 +40,10 @@ export class RegistrationsController {
     return this.registrations.cancel(eventId, user.email);
   }
 
-  // Organizer view of all registrations (lockdown handled in a later phase).
+  // Organizer view of all registrations — owner only.
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard, EventOwnerGuard)
+  @Roles(Role.ORGANIZER)
   list(@Param('eventId') eventId: string) {
     return this.registrations.findByEvent(eventId);
   }

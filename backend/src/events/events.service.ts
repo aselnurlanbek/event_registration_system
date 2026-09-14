@@ -14,7 +14,7 @@ export class EventsService {
     private readonly email: EmailService,
   ) {}
 
-  async create(dto: CreateEventDto): Promise<Event> {
+  async create(dto: CreateEventDto, organizerId?: string): Promise<Event> {
     return this.prisma.event.create({
       data: {
         title: dto.title,
@@ -22,12 +22,28 @@ export class EventsService {
         // Parse the ISO string to a Date; Prisma persists it in UTC.
         startsAt: new Date(dto.startsAt),
         capacity: dto.capacity,
+        organizerId, // the event belongs to the creating organizer
       },
     });
   }
 
   async findAll(): Promise<Event[]> {
     return this.prisma.event.findMany({ orderBy: { startsAt: 'asc' } });
+  }
+
+  /** Events owned by a specific organizer (for GET /organizer/events). */
+  async findByOrganizer(organizerId: string): Promise<Event[]> {
+    return this.prisma.event.findMany({
+      where: { organizerId },
+      orderBy: { startsAt: 'asc' },
+    });
+  }
+
+  /** Delete an event (cascade removes registrations/tickets/emails). */
+  async remove(id: string): Promise<{ id: string }> {
+    await this.findOne(id); // 404 if missing
+    await this.prisma.event.delete({ where: { id } });
+    return { id };
   }
 
   async findOne(id: string): Promise<Event> {

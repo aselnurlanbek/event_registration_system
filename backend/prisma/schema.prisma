@@ -23,6 +23,7 @@ model User {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   registrations Registration[]
+  events        Event[]
 }
 
 model Event {
@@ -32,10 +33,15 @@ model Event {
   startsAt       DateTime
   capacity       Int
   reminderSentAt DateTime? // coarse guard; per-participant guard is EmailLog
+  // Owning organizer. Nullable for backward compat with pre-ownership events.
+  organizer      User?          @relation(fields: [organizerId], references: [id])
+  organizerId    String?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   registrations  Registration[]
   emailLogs      EmailLog[]
+
+  @@index([organizerId]) // "my events" lookups
 }
 
 enum RegistrationStatus {
