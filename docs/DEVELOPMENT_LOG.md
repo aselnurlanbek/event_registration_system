@@ -4,6 +4,56 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 21:10 KST — Phase 2: Events module
+
+Implemented the Events domain module (CRUD, no participant registration yet). No git commit.
+
+### Completed work
+- **DTOs (`src/events/dto/`)** with `class-validator`:
+  - `CreateEventDto`: `title` (`@IsNotEmpty`), `description` (`@IsOptional`), `startsAt` (`@IsISO8601`), `capacity` (`@IsInt` + `@Min(1)`).
+  - `UpdateEventDto` = `PartialType(CreateEventDto)` (via `@nestjs/mapped-types`) — all fields optional, rules inherited.
+- **`EventsService`** (all business logic): `create`, `findAll` (ordered by `startsAt`), `findOne` (404 via `NotFoundException`), `update` (re-uses `findOne` for the 404 guard).
+- **`EventsController`** (HTTP only): `POST /api/events`, `GET /api/events`, `GET /api/events/:id`, `PATCH /api/events/:id` — pure delegation to the service.
+- Wired `EventsModule` into `AppModule`.
+
+### Important decisions
+- **UTC storage (req. 5):** DTO accepts an ISO-8601 string; the service does `new Date(dto.startsAt)` and Prisma persists it in UTC. Kept the wire format as a validated string rather than relying on implicit transform.
+- **Reschedule hook (req. 9):** `update()` compares the incoming `startsAt` to the stored value; on a real change it calls a private `handleReschedule()` that only logs today, with a `TODO(Phase 9)` to emit `EVENT_RESCHEDULED` → RESCHEDULE emails. **No email sending implemented yet.**
+- **404 semantics:** `update()` calls `findOne()` first so a missing event throws before any write is attempted.
+- **Controller/service separation (req. 6):** controllers hold no logic; validation is declarative in DTOs + the global `ValidationPipe` (whitelist + transform) from Phase 0.
+- Participant registration intentionally **not** implemented (req. 8) — deferred to Phases 3–4.
+
+### Test results
+- `npm test` → **2 suites, 11 tests, all passing** (~1.8s):
+  - `events.service.spec.ts` (7): create (+ UTC Date assertion), list, get (found), get (missing → `NotFoundException`), update fields, update detects reschedule (logs, no email), update missing → `NotFoundException`.
+  - `create-event.dto.spec.ts` (4): valid payload, capacity ≤ 0 rejected, empty title rejected, invalid `startsAt` rejected.
+- `npm run build` (`nest build`) → **exit 0**.
+- Live HTTP smoke test not run (declined); unit + validation tests and build cover the module.
+
+---
+
+## 2026-09-14 20:55 KST — Phase 1: Database & Prisma
+
+Set up PostgreSQL + Prisma and the first migration. No git commit.
+
+### Completed work
+- Installed `prisma` + `@prisma/client` (v6.19.3).
+- **`prisma/schema.prisma`** implementing ARCHITECTURE §6: `Event`, `Registration`, `Ticket`, `EmailLog` + enums `RegistrationStatus`, `EmailType`. Key constraints: `@@unique([eventId, email])`, `Ticket.code @unique`, `Ticket.registrationId @unique`, `@@unique([registrationId, dedupeKey])` on `EmailLog`, `@@index([eventId, status])`. `onDelete: Cascade` on child relations.
+- **`PrismaModule` (global) + `PrismaService`** with `onModuleInit`/`onModuleDestroy` connect/disconnect; wired into `AppModule`.
+- **`docker-compose.yml`** (postgres:16-alpine, healthcheck) as a portable alternative.
+- First migration `20260914115539_init` created and applied.
+
+### Important decisions
+- **DB choice:** used the machine's existing local homebrew Postgres 15 (already listening on 5432) instead of Docker, since the Docker daemon wasn't running. Created database `event_registration` owned by `aselbaekki` (trust auth). `docker-compose.yml` retained for reproducibility — note it also maps host 5432, so stop local PG (or change the port) before using it.
+- `DATABASE_URL` set in `backend/.env`; `.env.example` documents both the local and Docker forms.
+
+### Verification
+- `npx prisma validate` → valid; `npx prisma migrate dev --name init` applied; Prisma Client generated.
+- Confirmed via `psql`: tables `Event`, `Registration`, `Ticket`, `EmailLog`, `_prisma_migrations` and enums `RegistrationStatus`, `EmailType` present.
+- `npm run build` → exit 0.
+
+---
+
 ## 2026-09-14 20:47 KST — Phase 0: reconcile scaffolds to the planned stack
 
 Converted both apps from the initial scaffolds to the finalized stack. No domain logic yet — this is tooling/scaffolding only. No git commit.
