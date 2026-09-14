@@ -4,6 +4,47 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 01:12 KST — Phase A16: Demo prep — manual test plan & README
+
+Documentation-only pass to prepare for manual demonstration. No feature or code changes. No git commit.
+
+### Added
+- **`docs/MANUAL_TEST_PLAN.md`** — a checkbox manual test plan covering every requested flow: setup, participant flow, organizer flow, waitlist (capacity-1 promotion), concurrency (capacity-1 → exactly 1 REGISTERED + 1 WAITLISTED, with an optional concurrent-curl script), multi-client live updates (+ reconnect), restart/persistence, and the mock-email flows (ticket / waitlist-promotion / reminder / reschedule / cancellation) verified via `/dev/emails`. Plus authorization spot-checks.
+
+### Updated
+- **`README.md`** rewritten to be complete and current: project overview, architecture summary, prerequisites, setup (DB via Docker or local, backend, frontend), environment-variable tables (backend + frontend), demo-account guidance (self-register; organizer self-registration is demo-only), the **current role-based frontend routes**, the full **REST API table with auth/role requirements** (previously stale/pre-auth), reminder + WebSocket sections, **known limitations**, and **next steps**. Fixed the outdated routes table and the "register by email" wording (registration now uses JWT identity).
+
+### Verification
+- No code changed; backend remains at **104 tests / 16 suites passing** and builds clean; frontend typecheck + lint clean from the prior phase.
+
+---
+
+## 2026-09-15 01:09 KST — Phase A15: Role/authorization security review
+
+Reviewed every backend route for role + ownership enforcement, added a comprehensive authorization test suite, and documented the matrix in [`docs/AUTHORIZATION.md`](./AUTHORIZATION.md). No production code changed (review + tests + docs). No git commit.
+
+### Method
+Enumerated all controllers/routes and their guards; audited each against the required matrix; exercised every protected route over raw HTTP (supertest) — not via the frontend.
+
+### Result — the business-route matrix is correctly enforced
+- **Guards compose** `JwtAuthGuard` (401) → `RolesGuard`/`@Roles` (403) → `EventOwnerGuard` (404/403 by ownership).
+- **Identity is always taken from the JWT**, and there is **no client-supplied `registrationId` route anywhere** — so "modify another user's registration by id/email" is impossible by construction (a body `email` is ignored; a participant cancel only ever affects their own row).
+- **Ownership** is checked against the token user, so URL id tampering to another organizer's event → 403 (unknown id → 404).
+- Verified: PARTICIPANT can view events / self-register / view own registrations+ticket / cancel own; PARTICIPANT cannot create/edit/delete events, view private participant lists, view stats, check in, or touch another participant's registration; ORGANIZER can create/edit/cancel own events and view registrations/stats/check-in for own; ORGANIZER cannot act on another organizer's event.
+
+### Finding (documented)
+- **F1 (LOW, mitigated):** the `/dev/*` endpoints (`/dev/emails`, `/dev/reminders/run`, `/dev/events/:id/tickets`) have **no auth** — they're gated only by `NODE_ENV=production` → 404 in prod. Not a production exposure *if* `NODE_ENV=production` is set. Recommended future hardening: make the gate opt-in (dev/test only) or put them behind an admin guard. No other issues found.
+
+### Tests
+New `src/auth/authorization.matrix.integration.spec.ts` (real Postgres, self-cleaning, **23 cases**) covering the full matrix + the four attack scenarios (direct API calls, URL id tampering, another user's registration, another organizer's event id).
+- Full suite: `npm test` → **16 suites, 104 tests, all passing**; DB self-cleaned (0 `authz_%` rows left).
+- `npm run build` → exit 0 (backend unchanged, still compiles).
+
+### Docs
+- Created `docs/AUTHORIZATION.md` — enforcement mechanism, full route matrix, verified requirements, attack-scenario results, finding F1, and assumptions.
+
+---
+
 ## 2026-09-15 01:02 KST — Phase A14: Role-specific navigation & UI polish
 
 Reworked navigation to be role-aware and polished shared UI. No backend changes. No git commit.
