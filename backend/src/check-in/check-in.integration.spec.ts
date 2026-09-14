@@ -9,8 +9,13 @@ import { RegistrationStatus } from '@prisma/client';
 import { DashboardService } from '../dashboard/dashboard.service';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeStatsService } from '../realtime/realtime-stats.service';
 import { RegistrationsService } from '../registrations/registrations.service';
 import { CheckInService } from './check-in.service';
+
+const realtimeStub = {
+  broadcast: async () => {},
+} as unknown as RealtimeStatsService;
 
 describe('CheckInService (integration, real Postgres)', () => {
   let prisma: PrismaService;
@@ -23,8 +28,8 @@ describe('CheckInService (integration, real Postgres)', () => {
     prisma = new PrismaService();
     await prisma.$connect();
     const events = new EventsService(prisma);
-    checkIn = new CheckInService(prisma);
-    registrations = new RegistrationsService(prisma, events);
+    checkIn = new CheckInService(prisma, realtimeStub);
+    registrations = new RegistrationsService(prisma, events, realtimeStub);
     dashboard = new DashboardService(prisma, events);
   });
 

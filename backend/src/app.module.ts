@@ -5,6 +5,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { EventsModule } from './events/events.module';
 import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { RealtimeModule } from './realtime/realtime.module';
 import { RegistrationsModule } from './registrations/registrations.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { RegistrationsModule } from './registrations/registrations.module';
     RegistrationsModule,
     CheckInModule,
     DashboardModule,
+    RealtimeModule,
     // Domain modules (Events, Registrations, CheckIn, Dashboard, Realtime,
     // Email, Scheduler) are added in later phases — see docs/ARCHITECTURE.md §3.
   ],

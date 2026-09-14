@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { RegistrationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeStatsService } from '../realtime/realtime-stats.service';
 
 export interface CheckInResult {
   ticketCode: string;
@@ -15,7 +16,10 @@ export interface CheckInResult {
 
 @Injectable()
 export class CheckInService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: RealtimeStatsService,
+  ) {}
 
   /**
    * Check in a ticket. Single-use is guaranteed at the DATABASE level, not in
@@ -71,6 +75,9 @@ export class CheckInService {
     const updated = await this.prisma.registration.findUniqueOrThrow({
       where: { id: ticket.registrationId },
     });
+
+    // Broadcast updated stats (checkedIn count changed).
+    await this.realtime.broadcast(eventId);
 
     return {
       ticketCode,

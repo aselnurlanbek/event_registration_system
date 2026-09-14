@@ -12,7 +12,13 @@ import 'dotenv/config';
 import { RegistrationStatus } from '@prisma/client';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeStatsService } from '../realtime/realtime-stats.service';
 import { RegistrationsService } from './registrations.service';
+
+// Realtime broadcasting is covered by its own tests; stub it here.
+const realtimeStub = {
+  broadcast: async () => {},
+} as unknown as RealtimeStatsService;
 
 describe('RegistrationsService (integration, real Postgres)', () => {
   let prisma: PrismaService;
@@ -23,7 +29,7 @@ describe('RegistrationsService (integration, real Postgres)', () => {
     prisma = new PrismaService();
     await prisma.$connect();
     const events = new EventsService(prisma);
-    service = new RegistrationsService(prisma, events);
+    service = new RegistrationsService(prisma, events, realtimeStub);
   });
 
   afterAll(async () => {

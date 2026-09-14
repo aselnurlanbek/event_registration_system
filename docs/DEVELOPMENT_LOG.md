@@ -4,6 +4,38 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 22:15 KST — Phase 7: Realtime organizer stats (Socket.IO)
+
+Added live stats broadcasting so the organizer dashboard updates without refresh and across multiple tabs. (Phase 6 / email deferred.) No git commit.
+
+### What was implemented
+- **`RealtimeModule`** with:
+  - **`EventsGateway`** (Socket.IO `@WebSocketGateway`, CORS `origin: true`): `subscribe` / `unsubscribe` message handlers join/leave the per-event room `event:{eventId}`; `emitStatsUpdated()` broadcasts `event.stats.updated` to that room.
+  - **`RealtimeStatsService`**: computes the snapshot via `DashboardService.getStats` and broadcasts it. Called **after** the DB transaction commits; failures are caught/logged so a broadcast problem can never fail the REST request.
+- **Broadcast wired into every state change** (req. 3): `RegistrationsService.register` (REGISTERED + WAITLISTED), `RegistrationsService.cancel` (cancellation + auto-promotion; skipped on no-op repeat cancel), and `CheckInService.checkIn` (checked-in count).
+- **Payload contains only aggregate counts** — `{ eventId, capacity, registered, waitlisted, checkedIn }` — no participant PII (req. 5).
+- **Rooms** use the `event:{eventId}` convention (req. 1); multiple tabs subscribed to the same event all receive the same update (req. 4).
+- **Reconnect-safe by design** (req. 7): broadcasts are fire-and-forget notifications; the frontend is expected to re-fetch `GET /api/events/:eventId/stats` over REST on (re)connect and treat that snapshot as authoritative, applying subsequent events as deltas. Documented in README.
+
+### Notable gotcha (fixed)
+- A `@SubscribeMessage` handler that returns a `{ event, data }`-shaped object is interpreted by NestJS as a **`WsResponse` and emitted**, so the client's ack callback never fires (the e2e test hung on subscribe). Fixed by returning a plain ack object `{ status: 'subscribed', eventId }` (no `event` key).
+
+### Tests performed
+`npm test` → **7 suites, 36 tests, all passing** (~4.9s):
+- **`events.gateway.spec.ts`** (unit, 4): room-name convention, subscribe→join, unsubscribe→leave, and `emitStatsUpdated` sends the correct payload with exactly the 5 aggregate keys (asserts no PII leak).
+- **`realtime.integration.spec.ts`** (e2e, 1): boots the full Nest app on an ephemeral port, connects **two** socket.io clients, subscribes both to one event, performs a real registration, and asserts **both** receive an identical `event.stats.updated` (`registered: 1`) with no `email`/PII fields. Self-cleaning; uses real Postgres.
+- All prior suites still green (existing integration specs updated to inject a realtime stub).
+- `npm run build` → exit 0.
+
+### Docs
+- **`README.md`** created at repo root documenting REST endpoints and the full **WebSocket API** (rooms, `subscribe`/`unsubscribe`, `event.stats.updated` payload, client example, reconnect strategy) — satisfies req. 9.
+
+### Assumptions
+- Gateway CORS reflects the request origin (`origin: true`) — no auth in scope.
+- The Socket.IO server shares the REST origin/port (default `5050`).
+
+---
+
 ## 2026-09-14 21:57 KST — Phase 5: Ticket check-in & event stats
 
 Added `POST /api/events/:eventId/check-in` and `GET /api/events/:eventId/stats`. No git commit.

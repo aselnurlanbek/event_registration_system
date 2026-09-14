@@ -7,7 +7,12 @@ import 'dotenv/config';
 import { RegistrationStatus } from '@prisma/client';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeStatsService } from '../realtime/realtime-stats.service';
 import { RegistrationsService } from './registrations.service';
+
+const realtimeStub = {
+  broadcast: async () => {},
+} as unknown as RealtimeStatsService;
 
 describe('RegistrationsService cancellation (integration, real Postgres)', () => {
   let prisma: PrismaService;
@@ -17,7 +22,11 @@ describe('RegistrationsService cancellation (integration, real Postgres)', () =>
   beforeAll(async () => {
     prisma = new PrismaService();
     await prisma.$connect();
-    service = new RegistrationsService(prisma, new EventsService(prisma));
+    service = new RegistrationsService(
+      prisma,
+      new EventsService(prisma),
+      realtimeStub,
+    );
   });
 
   afterAll(async () => {

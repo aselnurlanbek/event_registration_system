@@ -3,6 +3,7 @@ import { Prisma, Registration, RegistrationStatus, Ticket } from '@prisma/client
 import { randomBytes } from 'node:crypto';
 import { EventsService } from '../events/events.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeStatsService } from '../realtime/realtime-stats.service';
 
 export type RegistrationWithTicket = Registration & { ticket: Ticket | null };
 
@@ -27,6 +28,7 @@ export class RegistrationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
+    private readonly realtime: RealtimeStatsService,
   ) {}
 
   /**
@@ -46,7 +48,7 @@ export class RegistrationsService {
   ): Promise<RegistrationWithTicket> {
     const email = this.normalizeEmail(rawEmail);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // 1. Serialize all registrations for THIS event. Concurrent transactions
       //    block on this lock until the holder commits. Also acts as the
       //    existence check (empty result => no such event).
@@ -78,6 +80,10 @@ export class RegistrationsService {
       }
       return this.upsertWaitlisted(tx, eventId, email, existing);
     });
+
+    // Broadcast live stats after commit (covers REGISTERED + WAITLISTED).
+    await this.realtime.broadcast(eventId);
+    return result;
   }
 
   /**
@@ -95,7 +101,7 @@ export class RegistrationsService {
   async cancel(eventId: string, rawEmail: string): Promise<CancelResult> {
     const email = this.normalizeEmail(rawEmail);
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // Lock the event row (also serves as existence check → 404).
       const locked = await tx.$queryRaw<{ id: string }[]>`
         SELECT id FROM "Event" WHERE id = ${eventId} FOR UPDATE
@@ -142,6 +148,13 @@ export class RegistrationsService {
         promoted,
       };
     });
+
+    // Broadcast live stats after commit (covers cancellation + promotion).
+    // Skip the no-op repeat-cancel case — nothing changed.
+    if (!result.alreadyCancelled) {
+      await this.realtime.broadcast(eventId);
+    }
+    return result;
   }
 
   /**
