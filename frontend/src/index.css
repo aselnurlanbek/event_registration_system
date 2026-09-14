@@ -358,6 +358,26 @@ h2 {
   margin: 1.5rem 0 0.6rem;
 }
 
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.page-head h1 {
+  margin: 0;
+}
+
+.event-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);

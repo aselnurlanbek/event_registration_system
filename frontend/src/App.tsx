@@ -6,8 +6,10 @@ import EventDetailPage from './pages/EventDetailPage';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import NotFoundPage from './pages/NotFoundPage';
+import OrganizerCreateEventPage from './pages/OrganizerCreateEventPage';
 import OrganizerDashboardPage from './pages/OrganizerDashboardPage';
-import OrganizerHomePage from './pages/OrganizerHomePage';
+import OrganizerEditEventPage from './pages/OrganizerEditEventPage';
+import OrganizerEventsPage from './pages/OrganizerEventsPage';
 import ParticipantDashboardPage from './pages/ParticipantDashboardPage';
 import ParticipantEventDetailPage from './pages/ParticipantEventDetailPage';
 import RegisterPage from './pages/RegisterPage';
@@ -33,7 +35,15 @@ export default function App() {
 
         {/* Organizer-only */}
         <Route element={<RequireRole role="ORGANIZER" />}>
-          <Route path="/organizer" element={<OrganizerHomePage />} />
+          <Route path="/organizer" element={<OrganizerEventsPage />} />
+          <Route
+            path="/organizer/events/new"
+            element={<OrganizerCreateEventPage />}
+          />
+          <Route
+            path="/organizer/events/:eventId/edit"
+            element={<OrganizerEditEventPage />}
+          />
           <Route
             path="/organizer/events/:eventId"
             element={<OrganizerDashboardPage />}

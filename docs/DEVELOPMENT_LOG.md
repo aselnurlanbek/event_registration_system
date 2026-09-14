@@ -4,6 +4,28 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:39 KST — Phase A10: Organizer dashboard + event create/edit/cancel
+
+Built the main organizer dashboard and event management UI. No git commit.
+
+### What was implemented
+- **`/organizer` dashboard** (`OrganizerEventsPage`): lists the organizer's **own** events (`GET /api/organizer/events`). Each event card shows title, date/time, event status, and live counts — capacity / registered / waitlisted / checked-in — from a per-card `GET /api/events/:id/stats` (owner-only). Actions per card: **View** (→ live dashboard), **Edit**, **Cancel** (only while ACTIVE). A prominent **Create Event** button sits in the header.
+- **Empty state:** "No events yet. Create your first event."
+- **Create** (`/organizer/events/new`) and **Edit** (`/organizer/events/:eventId/edit`) pages share a reusable **`EventForm`** (title, description, `datetime-local`, capacity). The form converts the local datetime to a UTC ISO string for the backend and does light client validation; **backend validation errors are surfaced** inline (req. 9).
+- **After creation → redirect** to `/organizer/events/:id` (the live event dashboard) (req. 6).
+- **Cancel** uses the soft-cancel `DELETE /events/:id` with a `window.confirm` guard.
+- **Hooks** (`api/organizer.ts`): `useMyEvents`, `useCreateEvent`, `useUpdateEvent`, `useCancelEvent` — all invalidate the organizer-events list + events list + affected event detail via TanStack Query (req. 8), so the dashboard reflects backend state after every mutation.
+
+### Routing/cleanup
+- Replaced the placeholder `OrganizerHomePage` with `OrganizerEventsPage`; added the `new`/`edit` routes (static `new` correctly outranks the `:eventId` param in React Router). Existing `/organizer/events/:eventId` (live dashboard) and `/check-in/:eventId` remain owner-guarded.
+
+### Checks
+- `npm run typecheck` (`tsc -b`) → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (36 files).
+- Full `vite build` not re-run this iteration (declined); `tsc -b` already validates compilation and the bundler step was unchanged from prior green builds.
+
+---
+
 ## 2026-09-15 00:32 KST — Phase A9: Participant ticket card
 
 Added a reusable, read-only ticket card for REGISTERED participants. No git commit.
