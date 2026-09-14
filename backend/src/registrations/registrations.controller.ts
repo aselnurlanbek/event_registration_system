@@ -1,29 +1,45 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
-import { CancelRegistrationDto } from './dto/cancel-registration.dto';
-import { CreateRegistrationDto } from './dto/create-registration.dto';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import { Role } from '@prisma/client';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { AuthUser } from '../auth/auth.types';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { RegistrationsService } from './registrations.service';
 
 @Controller('events/:eventId/registrations')
 export class RegistrationsController {
   constructor(private readonly registrations: RegistrationsService) {}
 
+  // Authenticated participant registers for the event using THEIR OWN identity.
+  // Email + userId come from the JWT — an arbitrary body email is never trusted.
   @Post()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.PARTICIPANT)
   register(
     @Param('eventId') eventId: string,
-    @Body() dto: CreateRegistrationDto,
+    @CurrentUser() user: AuthUser,
   ) {
-    return this.registrations.register(eventId, dto.email);
+    return this.registrations.register(eventId, user.email, user.userId);
   }
 
+  // Cancel own registration (identity from JWT → can only cancel yourself).
   @Post('cancel')
   @HttpCode(200)
-  cancel(
-    @Param('eventId') eventId: string,
-    @Body() dto: CancelRegistrationDto,
-  ) {
-    return this.registrations.cancel(eventId, dto.email);
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(Role.PARTICIPANT)
+  cancel(@Param('eventId') eventId: string, @CurrentUser() user: AuthUser) {
+    return this.registrations.cancel(eventId, user.email);
   }
 
+  // Organizer view of all registrations (lockdown handled in a later phase).
   @Get()
   list(@Param('eventId') eventId: string) {
     return this.registrations.findByEvent(eventId);

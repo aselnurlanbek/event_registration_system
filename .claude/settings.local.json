@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const p=require\\('./node_modules/@nestjs/jwt/package.json'\\); console.log\\('version',p.version\\); console.log\\('type',p.type\\); console.log\\('main',p.main\\); console.log\\('exports',JSON.stringify\\(p.exports\\)\\)\")",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/jsonwebtoken/package.json'\\).version\\)\")"
+    ]
+  }
+}

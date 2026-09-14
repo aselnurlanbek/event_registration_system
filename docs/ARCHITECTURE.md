@@ -416,3 +416,147 @@ Each phase is independently committable and leaves the app in a working state.
 - **Stack migration:** the current scaffolds are Express (backend) and plain-JS React (frontend). Phase 0 must re-scaffold/convert to NestJS+TS and add TanStack Query + Socket.IO client, per the planned stack.
 - **Auth:** none specified — organizer vs participant is by convention/route, not authenticated. Assume trusted/demo context for the assignment.
 - **Port:** backend default was moved to `5050` (macOS AirPlay occupies `5000`).
+---
+
+# Extension: User Accounts & Roles (PROPOSED — 2026-09-14)
+
+> Design proposal for adding participant/organizer accounts. **Not yet implemented.** The guiding principle is the *smallest coherent, additive* change that preserves every existing guarantee.
+
+## E.1 What already exists (baseline)
+
+Implemented and working (backend fully tested, 48 backend tests green; frontend builds):
+
+- **Data model:** `Event`, `Registration` (unique `(eventId, email)`), `Ticket` (unique `code`), `EmailLog` (unique `deduplicationKey`). Enums `RegistrationStatus`, `EmailType`. **No `User` model; no ownership on `Event`.**
+- **Backend (NestJS):** `Events` CRUD (no delete), `Registrations` (register/cancel/list — concurrency-safe via `SELECT … FOR UPDATE` on the event row), `CheckIn` (atomic single-use), `Dashboard` (stats), `Realtime` (Socket.IO `event.stats.updated`), `Email` (mock outbox), `Scheduler` (24h reminders), plus dev-only endpoints (`/dev/emails`, `/dev/reminders/run`, `/dev/events/:id/tickets`).
+- **Identity today:** a participant is *just an email string* on `Registration`. Anyone can register any email; no login. Organizer actions are unauthenticated (trusted/demo context).
+- **Frontend (React/Vite/TS):** routes `/`, `/events/:id`, `/organizer/events/:id`, `/check-in/:id`; TanStack Query hooks; Socket.IO client. No auth/session.
+
+The concurrency, waitlist, ticket, email, reminder, and WebSocket logic is the **load-bearing core and must not be rewritten.** The key insight enabling a safe extension: that core is keyed on **`(eventId, email)`** — so accounts can be layered on *around* it (email stays the natural key) rather than *through* it.
+
+## E.2 Account model (proposed)
+
+One `User` table, uniform email+password login for both roles, stateless **JWT** bearer auth (`@nestjs/jwt` + a `passport-jwt` strategy). `bcrypt` password hashing. Chosen over sessions because it needs no server-side store and is the simplest thing that works for an assignment.
+
+```prisma
+enum Role {
+  PARTICIPANT
+  ORGANIZER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(PARTICIPANT)
+  displayName  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events        Event[]        // organizer's own events
+  registrations Registration[] // participant's own registrations
+}
+```
+
+**Additive links (both nullable — this is what keeps the change safe):**
+
+```prisma
+model Event {
+  // ...unchanged...
+  organizerId String?
+  organizer   User?   @relation(fields: [organizerId], references: [id])
+}
+
+model Registration {
+  // ...unchanged, INCLUDING @@unique([eventId, email])...
+  userId String?
+  user   User?  @relation(fields: [userId], references: [id])
+}
+```
+
+- `Registration.email` and `@@unique([eventId, email])` **stay exactly as-is** → the FOR-UPDATE registration/cancel/promotion transaction is untouched, concurrency guarantees intact. `userId` is populated from the JWT at registration time; "my registrations" queries can use `userId` (or fall back to the token email).
+- `Event.organizerId` enables "my events" + ownership checks. Nullable so existing rows migrate cleanly (see E.7).
+
+> **Lighter alternative considered:** email-only "magic identity" for participants (no password), password only for organizers. Rejected — mixing two auth schemes is *more* code than one uniform JWT scheme, and contradicts "keep it simple."
+
+## E.3 Role-based access rules
+
+| Action | Public | PARTICIPANT | ORGANIZER |
+|---|---|---|---|
+| Register account / login | ✅ | — | — |
+| List / view events | ✅ (browse) | ✅ | ✅ |
+| Register self for an event | — | ✅ (email from JWT) | — |
+| Cancel own registration | — | ✅ | — |
+| View own registrations/history | — | ✅ | — |
+| Create event | — | — | ✅ |
+| Edit / delete event | — | — | ✅ **owner only** |
+| View own events | — | — | ✅ |
+| View stats / participants / waitlist | — | — | ✅ **owner only** |
+| Check-in a participant | — | — | ✅ **owner only** |
+
+Enforced with three composable pieces: a global `JwtAuthGuard` (opt-out via a `@Public()` decorator for browse/login), a `RolesGuard` reading a `@Roles(...)` decorator, and an **event-ownership check** in the organizer service methods (`event.organizerId === req.user.id`, else `403`). Participants act **only on their own identity** — the register/cancel endpoints derive email from the JWT and ignore any body email, so one user cannot act for another.
+
+## E.4 Backend API changes (all additive; existing service logic unchanged)
+
+**New — `AuthModule`:**
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | `{ email, password, role?, displayName? }` | `{ user, accessToken }` |
+| `POST` | `/api/auth/login` | `{ email, password }` | `{ user, accessToken }` |
+| `GET` | `/api/auth/me` | — | current `user` |
+
+**Changed (guards/identity only — service signatures preserved):**
+- `POST /api/events` — `@Roles(ORGANIZER)`; sets `organizerId = req.user.id`.
+- `PATCH /api/events/:id` — `@Roles(ORGANIZER)` + ownership.
+- **`DELETE /api/events/:id`** — *new*; `@Roles(ORGANIZER)` + ownership (cascade already deletes registrations/tickets/emails).
+- `GET /api/events`, `GET /api/events/:id` — `@Public()` (browse). Add `GET /api/organizer/events` → organizer's own events.
+- `POST /api/events/:eventId/registrations` — `@Roles(PARTICIPANT)`; email + `userId` come from the JWT (body email dropped). **The service call `register(eventId, email)` is unchanged.**
+- `POST /api/events/:eventId/registrations/cancel` — `@Roles(PARTICIPANT)`; email from JWT; a participant may cancel only their own.
+- `GET /api/events/:eventId/registrations`, `GET .../stats`, `POST .../check-in` — `@Roles(ORGANIZER)` + ownership.
+- **`GET /api/me/registrations`** — *new*; participant history (joins `Registration` + `Event` + `Ticket`) with status, ticket code, check-in state.
+
+**Realtime:** `event.stats.updated` already carries no PII → the gateway can stay open for the assignment. Optional hardening: authenticate the socket handshake with the JWT and restrict organizer rooms. Recorded as optional.
+
+## E.5 Frontend pages & routes
+
+| Route | Role | Purpose |
+|---|---|---|
+| `/login`, `/signup` | public | Auth forms; store JWT (localStorage) + `AuthContext` |
+| `/` | public/participant | Upcoming events list |
+| `/events/:eventId` | participant | Details + register + **own status** (REGISTERED/WAITLISTED/CANCELLED), ticket code, check-in status, cancel |
+| `/me/registrations` | participant | Registration history/dashboard |
+| `/organizer` | organizer | Dashboard: own events + quick stats |
+| `/organizer/events/new` | organizer | Create event |
+| `/organizer/events/:eventId/edit` | organizer | Edit / delete event |
+| `/organizer/events/:eventId` | organizer | Existing live dashboard (stats, participants, waitlist) |
+| `/check-in/:eventId` | organizer | Existing check-in screen |
+
+Cross-cutting: `AuthContext` + an auth header injected into `apiFetch`; a `<RequireRole>` route wrapper; a header showing the logged-in user + logout. Existing pages are largely reused — the main additions are auth screens, the participant history view, and organizer create/edit/delete forms.
+
+## E.6 Database schema changes (summary)
+
+1. New enum `Role`. 2. New `User` model. 3. `Event.organizerId` (nullable FK). 4. `Registration.userId` (nullable FK). **Nothing removed or altered** on existing columns/constraints — notably `@@unique([eventId, email])` stays.
+
+## E.7 Migration risks
+
+- **Legacy events have `organizerId = NULL`.** Owner-only guards would make them uneditable/invisible in the organizer view. *Mitigations:* (a) seed an organizer user and backfill existing events to it in the migration, or (b) wipe demo data before rollout. Recommend (a) for safety; the migration is additive + one backfill `UPDATE`.
+- **Registration behavior change:** register/cancel now use the JWT email, so the "register anyone" ability goes away (intended). Concurrency unaffected — still `(eventId, email)` under the row lock.
+- **Duplicate identity:** `User.email` unique + existing `(eventId, email)` unique compose cleanly (one account ⇒ one registration per event). No conflict.
+- **Existing `Registration.userId = NULL`** for demo rows — fine (nullable); history-by-userId simply won't include pre-account registrations. Acceptable, or backfill by matching email→user.
+- **Secrets:** `JWT_SECRET` must be added to env/`.env.example`; without it the app should refuse to boot.
+- **Nullable FKs are deliberate** to make the migration non-destructive; a later tightening pass could make them required after backfill.
+
+## E.8 Implementation phases (one commit each)
+
+| Phase | Commit | Contents |
+|---|---|---|
+| **A1** | `feat(db): user model + role, nullable owner/user FKs` | Schema + migration (incl. seed organizer + backfill of legacy events). No behavior change yet. |
+| **A2** | `feat(auth): AuthModule (register/login/me, JWT, bcrypt)` | Endpoints, `JwtStrategy`, `JwtAuthGuard`, `RolesGuard`, `@Public()`/`@Roles()`/`@CurrentUser()`. Guards not yet applied to existing routes. |
+| **A3** | `feat(events): organizer ownership + delete + own-events` | Apply org guards to create/edit; add `DELETE` + `GET /organizer/events`; set `organizerId`; ownership checks. Existing services untouched. |
+| **A4** | `feat(registrations): participant identity + history` | Apply participant guards; derive email/`userId` from JWT; add `GET /me/registrations`. Concurrency core unchanged. |
+| **A5** | `feat(access): lock down stats/check-in/list to owner` | Org guards + ownership on dashboard, registrations list, check-in. |
+| **A6** | `feat(fe-auth): AuthContext, login/signup, guarded routing` | Token storage, auth header in `apiFetch`, `<RequireRole>`, header/logout. |
+| **A7** | `feat(fe-participant): dashboard, history, status/ticket` | Participant views + own-status/cancel on event detail. |
+| **A8** | `feat(fe-organizer): own events, create/edit/delete` | Organizer dashboard + event forms; reuse existing live dashboard/check-in. |
+| **A9** | `test/docs: role tests + README/ARCHITECTURE` | Auth/ownership integration tests (incl. 401/403), concurrency re-verified, docs. |
+
+**Ordering rationale:** DB + auth first (A1–A2, no behavior change), then apply access rules role-by-role on the backend (A3–A5) so each commit is independently verifiable, then the frontend consumes it (A6–A8), then hardening (A9). Every phase is additive; the concurrency-critical transaction is never edited.

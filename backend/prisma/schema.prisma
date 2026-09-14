@@ -10,6 +10,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  PARTICIPANT
+  ORGANIZER
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  role          Role           @default(PARTICIPANT)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  registrations Registration[]
+}
+
 model Event {
   id             String         @id @default(cuid())
   title          String
@@ -34,6 +49,10 @@ model Registration {
   event       Event              @relation(fields: [eventId], references: [id], onDelete: Cascade)
   eventId     String
   email       String
+  // Optional link to the participant account. Nullable for backward compat with
+  // pre-account registrations; email remains the identity key for concurrency.
+  user        User?              @relation(fields: [userId], references: [id])
+  userId      String?
   status      RegistrationStatus
   waitlistPos Int? // FIFO ordering for promotion (null unless WAITLISTED)
   checkedInAt DateTime? // set once at check-in
@@ -44,6 +63,7 @@ model Registration {
 
   @@unique([eventId, email]) // enforces idempotent registration (req. 1)
   @@index([eventId, status]) // fast capacity counts & waitlist ordering
+  @@index([userId]) // "my registrations" lookups
 }
 
 model Ticket {

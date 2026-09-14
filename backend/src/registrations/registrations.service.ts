@@ -21,6 +21,22 @@ export interface EventRegistrations {
   waitlisted: RegistrationWithTicket[];
 }
 
+export interface MyRegistration {
+  id: string;
+  status: RegistrationStatus;
+  waitlistPos: number | null;
+  checkedInAt: Date | null;
+  createdAt: Date;
+  ticketCode: string | null;
+  event: {
+    id: string;
+    title: string;
+    description: string | null;
+    startsAt: Date;
+    capacity: number;
+  };
+}
+
 export interface CancelResult {
   registration: RegistrationWithTicket;
   // true only when this call performed the cancellation (false on a repeat).
@@ -53,6 +69,7 @@ export class RegistrationsService {
   async register(
     eventId: string,
     rawEmail: string,
+    userId?: string,
   ): Promise<RegistrationWithTicket> {
     const email = this.normalizeEmail(rawEmail);
 
@@ -84,7 +101,7 @@ export class RegistrationsService {
       const hasCapacity = registeredCount < capacity;
 
       if (hasCapacity) {
-        const reg = await this.upsertRegistered(tx, eventId, email, existing);
+        const reg = await this.upsertRegistered(tx, eventId, email, existing, userId);
         // REGISTRATION_TICKET on becoming REGISTERED via normal registration.
         await this.email.recordInTx(tx, {
           type: EmailType.REGISTRATION_TICKET,
@@ -96,7 +113,7 @@ export class RegistrationsService {
         });
         return reg;
       }
-      return this.upsertWaitlisted(tx, eventId, email, existing);
+      return this.upsertWaitlisted(tx, eventId, email, existing, userId);
     });
 
     // Broadcast live stats after commit (covers REGISTERED + WAITLISTED).
@@ -241,6 +258,35 @@ export class RegistrationsService {
     };
   }
 
+  /**
+   * A participant's own registrations (newest first) with event info + ticket.
+   * Matches by userId OR email so pre-account (legacy) rows are included too.
+   */
+  async findMine(userId: string, rawEmail: string): Promise<MyRegistration[]> {
+    const email = this.normalizeEmail(rawEmail);
+    const rows = await this.prisma.registration.findMany({
+      where: { OR: [{ userId }, { email }] },
+      include: { event: true, ticket: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return rows.map((r) => ({
+      id: r.id,
+      status: r.status,
+      waitlistPos: r.waitlistPos,
+      checkedInAt: r.checkedInAt,
+      createdAt: r.createdAt,
+      ticketCode: r.ticket?.code ?? null,
+      event: {
+        id: r.event.id,
+        title: r.event.title,
+        description: r.event.description,
+        startsAt: r.event.startsAt,
+        capacity: r.event.capacity,
+      },
+    }));
+  }
+
   // --- helpers -------------------------------------------------------------
 
   private async upsertRegistered(
@@ -248,17 +294,19 @@ export class RegistrationsService {
     eventId: string,
     email: string,
     existing: RegistrationWithTicket | null,
+    userId?: string,
   ): Promise<RegistrationWithTicket> {
     const code = this.generateTicketCode();
 
     if (existing) {
       // Reviving a previously CANCELLED registration: keep an existing ticket
-      // if present, otherwise mint a new one.
+      // if present, otherwise mint a new one. Backfill userId if now known.
       return tx.registration.update({
         where: { id: existing.id },
         data: {
           status: RegistrationStatus.REGISTERED,
           waitlistPos: null,
+          ...(userId ? { userId } : {}),
           ...(existing.ticket ? {} : { ticket: { create: { code } } }),
         },
         include: { ticket: true },
@@ -269,6 +317,7 @@ export class RegistrationsService {
       data: {
         eventId,
         email,
+        userId,
         status: RegistrationStatus.REGISTERED,
         ticket: { create: { code } }, // ticket only for REGISTERED (reqs. 6, 7)
       },
@@ -281,6 +330,7 @@ export class RegistrationsService {
     eventId: string,
     email: string,
     existing: RegistrationWithTicket | null,
+    userId?: string,
   ): Promise<RegistrationWithTicket> {
     // FIFO position at the tail of the waitlist: max existing position + 1.
     // Using max (not count) keeps positions unique even after cancellations
@@ -294,7 +344,11 @@ export class RegistrationsService {
     if (existing) {
       return tx.registration.update({
         where: { id: existing.id },
-        data: { status: RegistrationStatus.WAITLISTED, waitlistPos },
+        data: {
+          status: RegistrationStatus.WAITLISTED,
+          waitlistPos,
+          ...(userId ? { userId } : {}),
+        },
         include: { ticket: true },
       });
     }
@@ -303,6 +357,7 @@ export class RegistrationsService {
       data: {
         eventId,
         email,
+        userId,
         status: RegistrationStatus.WAITLISTED,
         waitlistPos,
       },

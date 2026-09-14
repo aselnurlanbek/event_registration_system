@@ -4,6 +4,89 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 23:53 KST — Phase A4: Account-linked registrations
+
+Connected event registrations to authenticated participant accounts. Additive — the concurrency/waitlist/ticket/promotion core is unchanged. No git commit.
+
+### Schema (migration `20260914144949_registration_user_link`)
+- Added **nullable** `Registration.userId` (FK → `User`) + `User.registrations` back-relation + `@@index([userId])`. Nullable preserves compatibility with pre-account rows. **`Registration.email` and `@@unique([eventId, email])` are untouched**, so the `FOR UPDATE` transaction, FIFO waitlist, and promotion logic are fully preserved (req. 5).
+
+### Registration by authenticated identity (reqs. 2, 3)
+- `POST /api/events/:eventId/registrations` now requires `JwtAuthGuard + RolesGuard + @Roles(PARTICIPANT)`. Email **and** userId are taken from the JWT; **any body email is ignored** — a participant cannot register another person's email.
+- Service change is minimal and additive: `register(eventId, email, userId?)` — `userId` threaded into the create/revive helpers (and backfilled onto a revived row). The 3-arg call is backward compatible; existing service-level concurrency tests (2-arg) are unaffected. `@@unique([eventId, email])` still guarantees one active registration per participant per event (req. 4).
+
+### Cancellation by owner (reqs. 7, 8)
+- Reused `POST /api/events/:eventId/registrations/cancel` in authenticated form: `@Roles(PARTICIPANT)`, email from the JWT → a participant can cancel **only their own** registration. Someone with no registration gets `404` and never affects another participant. Auto-promotion on cancel is unchanged.
+
+### New endpoint (req. 6)
+- `GET /api/me/registrations` (`MeController`, PARTICIPANT-guarded) → the caller's registrations, newest first, each with `{ status, waitlistPos, checkedInAt, createdAt, ticketCode, event: { id, title, description, startsAt, capacity } }`. Matches by `userId OR email` so legacy rows are included.
+
+### Tests (req. 9)
+`npm test` → **13 suites, 68 tests, all passing**. New `registration-auth.integration.spec.ts` (HTTP + real Postgres, self-cleaning, 8 cases): register requires auth (401); organizer registering as participant → 403; **body email ignored** — row stored under the JWT email with a non-null `userId`, and no row created for the attacker email; idempotent repeat; `/me/registrations` returns only the caller's rows (with event+ticket) and is empty for another user; `/me` requires auth (401); cancel affects only the caller (p2 → 404, p1 → 200 CANCELLED); cancel requires auth (401). All prior concurrency/waitlist tests still green.
+- `npm run build` → exit 0.
+
+### Notes
+- The old body-email DTOs (`create-registration.dto.ts`, `cancel-registration.dto.ts`) are now unused (identity comes from the JWT); left in place to avoid unrelated churn.
+- Organizer-only lockdown of the registrations *list* / stats / check-in and event *ownership* remain for the next phase (A3/A5).
+
+---
+
+## 2026-09-14 23:44 KST — Phase A1–A2: User accounts, JWT auth & role guards
+
+Implemented email+password accounts with JWT and protected organizer-only routes. Additive only — the registration/waitlist concurrency core is untouched. No git commit.
+
+### Schema (migration `20260914143614_user_accounts`)
+- New `enum Role { PARTICIPANT, ORGANIZER }` and `User` model (`id, email @unique, passwordHash, role @default(PARTICIPANT), createdAt, updatedAt`). Purely additive — no change to `Event`/`Registration`/`Ticket`/`EmailLog`, so `@@unique([eventId, email])` and the `FOR UPDATE` transaction are preserved (req. 10). Migration applied non-interactively (no data-loss warning).
+
+### AuthModule
+- **Endpoints:** `POST /api/auth/register`, `POST /api/auth/login` (200), `GET /api/auth/me` (JWT-guarded).
+- **Password hashing:** `bcrypt` (10 salt rounds). Password hash is never returned (a `toPublic` helper strips it).
+- **JWT:** `@nestjs/jwt` issues a token `{ sub, email, role }`; `passport-jwt` `JwtStrategy` validates the bearer token → `req.user`. Secret + expiry from `JWT_SECRET` / `JWT_EXPIRES_IN` env (added to `.env` + `.env.example`).
+- **Guards/decorators:** `JwtAuthGuard` (401 if no/invalid token), `RolesGuard` + `@Roles(...)` (403 if wrong role), `@CurrentUser()` param decorator. Applied guards, not a global guard, to avoid touching existing public/participant routes.
+- **Protected organizer-only routes:** `POST /api/events` and `PATCH /api/events/:id` now require `JwtAuthGuard + RolesGuard + @Roles(ORGANIZER)`. Event browsing (GET) and participant registration remain public for now (ownership + participant identity are later phases).
+
+### Decision — ORGANIZER self-registration
+Allowed in this **demo** build (the register endpoint accepts `role`). Documented in code that in production organizer accounts would be admin/invite-only; participants would self-register as PARTICIPANT by default.
+
+### Dependency fix (important)
+The latest `@nestjs/jwt@12` and `@nestjs/passport@12` are **ESM-only** (`type: module`), which crashes our CommonJS backend on Node 20.17 at `require` time (and breaks ts-jest). Pinned both to the **v11 (CommonJS)** line matching NestJS 11 — build, tests, and runtime boot all confirmed working after the change.
+
+### Tests performed
+`npm test` → **12 suites, 60 tests, all passing**. New `auth.integration.spec.ts` (HTTP via supertest + real Postgres, self-cleaning, 10 cases): account creation (token returned, no password hash), duplicate email → 409, organizer registration, login success, invalid password → 401, `/me` with token → 200, `/me` without token → 401, and organizer-only `POST /events`: unauthenticated → 401, PARTICIPANT → 403, ORGANIZER → 201.
+- `npm run build` → exit 0.
+- Verified the built app **boots at runtime** with auth routes mapped (`/api/auth/register|login|me`) — confirms the ESM→CJS fix.
+
+### Assumptions
+- No global auth guard yet; only organizer create/edit are locked down (per the prompt's "protect organizer-only routes"). Event ownership, participant JWT identity on register/cancel, and `/me/registrations` remain for later phases.
+
+---
+
+## 2026-09-14 23:32 KST — Design proposal: User accounts & roles (no implementation)
+
+Inspected the existing backend + frontend and drafted the *smallest coherent* extension for participant/organizer accounts. **No code changed.** Full proposal appended to `docs/ARCHITECTURE.md` (section "Extension: User Accounts & Roles"). Summary:
+
+### What exists today
+- No `User` model, no auth. A participant is just an `email` string on `Registration`; events have no owner. Concurrency/waitlist/ticket/email/reminder/WebSocket logic is complete and tested (48 backend tests green) and is keyed on `(eventId, email)`.
+
+### Key design decision (safety)
+The load-bearing core is keyed on `(eventId, email)`, so accounts are layered **around** it, not through it. Proposed changes are **purely additive**:
+- New `User` (email unique, `passwordHash`, `role` PARTICIPANT|ORGANIZER), JWT auth (`@nestjs/jwt` + `passport-jwt`), `bcrypt`.
+- **Nullable** `Event.organizerId` and **nullable** `Registration.userId`. `Registration.email` and `@@unique([eventId, email])` are **untouched** → the FOR-UPDATE registration/cancel transaction and all concurrency guarantees are preserved. No existing service signature changes; guards + JWT-derived identity are added at the controller layer only.
+
+### Access rules
+Global `JwtAuthGuard` (+ `@Public()`), `RolesGuard` (+ `@Roles()`), and an event-ownership check in organizer methods. Participants act only on their own JWT identity (register/cancel ignore body email).
+
+### API changes (additive)
+New `AuthModule` (`/auth/register`, `/auth/login`, `/auth/me`); new `DELETE /events/:id`, `GET /organizer/events`, `GET /me/registrations`; existing routes gain role/ownership guards.
+
+### Migration risks (flagged)
+Legacy events have `organizerId=NULL` → recommend seeding an organizer + backfilling in the migration (else they become uneditable). Register/cancel behavior changes to JWT identity (intended). `JWT_SECRET` env required. Nullable FKs keep the migration non-destructive.
+
+### Phasing
+9 additive commits (A1 schema/migration → A2 auth → A3–A5 backend guards role-by-role → A6–A8 frontend auth/participant/organizer → A9 tests+docs); the concurrency-critical transaction is never edited.
+
+---
+
 ## 2026-09-14 22:58 KST — Phase 13: Organizer check-in screen (/check-in/:eventId)
 
 Implemented the manual ticket-code check-in screen (no QR scanning). No git commit.
