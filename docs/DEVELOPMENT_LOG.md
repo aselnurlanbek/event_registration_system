@@ -4,6 +4,46 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 21:57 KST — Phase 5: Ticket check-in & event stats
+
+Added `POST /api/events/:eventId/check-in` and `GET /api/events/:eventId/stats`. No git commit.
+
+### How duplicate check-in is prevented
+- **A single database-level conditional UPDATE — not application memory.** The write is:
+  `UPDATE "Registration" SET "checkedInAt" = now() WHERE id = $id AND status = 'REGISTERED' AND "checkedInAt" IS NULL`, issued via Prisma `updateMany`, and the affected-row count is inspected.
+- A single `UPDATE ... WHERE` is atomic in Postgres and takes a row lock for its duration. With two concurrent check-ins of the same ticket, the first matches the `checkedInAt IS NULL` predicate and sets the timestamp; the second **blocks on the row lock**, then re-evaluates the predicate against the now-committed row, no longer matches, and affects **0 rows** → treated as already-checked-in → `409`. Exactly one succeeds (req. 8), and correctness does not depend on any in-process flag or lock.
+- There is also a cheap pre-check that returns `409` immediately for an obvious repeat, but the atomic guard above is the authoritative protection; both concurrent racers ultimately resolve to one 200 + one 409.
+
+### Behaviour / status codes
+- Ticket must belong to the event (req. 1) — mismatch → `404`.
+- Only a currently `REGISTERED` participant may check in (req. 2) — otherwise `409` (`ConflictException`) with the offending status; e.g. a cancelled participant's retained ticket cannot be used.
+- Ticket may be checked in exactly once (req. 3), storing `checkedInAt` (req. 4).
+- First valid check-in → `200` (controller `@HttpCode(200)`, req. 5); repeat → `409` (req. 6); unknown ticket → `404` (req. 7).
+- Response: `{ ticketCode, status: 'CHECKED_IN', checkedInAt, participant: { id, email } }`.
+
+### Stats endpoint (req. 9)
+- New `DashboardModule`: `GET /api/events/:eventId/stats` → `{ capacity, registered, waitlisted, checkedIn }`. `checkedIn` = `REGISTERED` rows with `checkedInAt IS NOT NULL`. Reuses `EventsService.findOne` for existence (404) + capacity. (Phase 7 will broadcast these live over Socket.IO.)
+
+### Modules
+- `check-in/` (`CheckInModule`, controller, service, dto) and `dashboard/` (`DashboardModule`, controller, service), both wired into `AppModule`.
+
+### Tests performed — all against REAL Postgres (no mocked transactions)
+`npm test` → **5 suites, 31 tests, all passing** (~5.3s). New `check-in.integration.spec.ts` (7 cases), self-cleaning (verified 0 leftover rows):
+- successful check-in → `CHECKED_IN`, `checkedInAt` persisted.
+- duplicate check-in → `ConflictException` (409).
+- invalid/unknown ticket → `NotFoundException` (404).
+- ticket belonging to a different event → `NotFoundException` (404).
+- cancelled participant → `ConflictException` (409).
+- **two concurrent check-ins of the same ticket → exactly one fulfilled, one rejected**; `checkedInAt` set once.
+- stats → `{ capacity: 2, registered: 2, waitlisted: 1, checkedIn: 1 }`.
+- `npm run build` → exit 0.
+
+### Assumptions
+- A cancelled participant keeps their ticket row (history, from Phase 4); check-in guards on `status` so it can't be redeemed.
+- No auth — the check-in screen is trusted (staff/demo context).
+
+---
+
 ## 2026-09-14 21:51 KST — Phase 4: Cancellation & automatic waitlist promotion
 
 Added `POST /api/events/:eventId/registrations/cancel`. History is preserved — rows flip to `CANCELLED`, never deleted. No git commit.
