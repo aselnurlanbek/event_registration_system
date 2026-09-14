@@ -270,6 +270,11 @@ h2 {
   border-color: #fde3a7;
   background: #fffbeb;
 }
+.notice--error {
+  border-color: #f3c4c4;
+  background: #fef2f2;
+  color: var(--danger);
+}
 .ticket-code {
   display: inline-block;
   padding: 0.15rem 0.5rem;
@@ -350,4 +355,66 @@ h2 {
   background: #f0fdf4;
   color: #15803d;
   border-color: #b7e4c7;
+}
+
+/* Check-in screen */
+.checkin {
+  max-width: 560px;
+}
+.checkin__counters {
+  display: flex;
+  gap: 0.75rem;
+  margin: 1rem 0 1.5rem;
+}
+.counter {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  text-align: center;
+}
+.counter__value {
+  display: block;
+  font-size: 2.2rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.counter__label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.checkin__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.checkin__label {
+  font-weight: 600;
+}
+.checkin__input {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  font-size: 1.6rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  text-transform: uppercase;
+}
+.checkin__input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+.checkin__input:disabled {
+  background: #f1f3f5;
+}
+.checkin__submit {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+}
+.checkin__feedback {
+  margin-top: 1.25rem;
 }

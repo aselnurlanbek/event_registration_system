@@ -4,6 +4,33 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 22:58 KST — Phase 13: Organizer check-in screen (/check-in/:eventId)
+
+Implemented the manual ticket-code check-in screen (no QR scanning). No git commit.
+
+### What was implemented
+- **Large, centered, monospace ticket-code input**, auto-focused on mount, submitting to `POST /api/events/:eventId/check-in` via `useCheckIn` (`api/checkin.ts`).
+- **Result handling** — mapped by HTTP status (see API client change below):
+  - success (200) → "Participant checked in successfully." (+ participant email)
+  - already used (409, message contains "already checked in") → "This ticket has already been checked in."
+  - invalid ticket (404) → "Invalid ticket code."
+  - cancelled / not eligible (409 other) → shows the API's message verbatim (e.g. "Participant is not registered (status: CANCELLED)").
+- **Fast repeat entry:** on success the input is **cleared and refocused**, so the operator can immediately type the next ticket.
+- **Live counters** "Checked In: X" and "Registered: Y" from `useEventStats`, kept **synchronized over Socket.IO** via the shared `useEventRealtime(eventId)` hook — each successful check-in triggers a backend `event.stats.updated` broadcast (Phase 7) that updates the counters here and on any other open screen.
+
+### API client change
+- `apiFetch` now throws a typed **`ApiError`** carrying the HTTP `status` (previously a plain `Error` with only a message). This lets the check-in screen distinguish 404 vs 409 precisely. `ErrorMessage` still reads `.message`, so existing pages are unaffected.
+- *tsconfig note:* the frontend uses `erasableSyntaxOnly`, which forbids TS constructor parameter properties — wrote `ApiError` with an explicit field + assignment instead.
+
+### Checks
+- `npm run typecheck` → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (22 files).
+- `npm run build` → success.
+
+This completes the participant + organizer UI (event list, registration, dashboard, check-in) on top of the full backend.
+
+---
+
 ## 2026-09-14 22:53 KST — Phase 12: Organizer dashboard with live stats (/organizer/events/:eventId)
 
 Implemented the organizer dashboard: REST for initial data, Socket.IO for live updates. No git commit.
