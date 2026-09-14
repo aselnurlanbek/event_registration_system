@@ -13,6 +13,15 @@ export interface EventRegistrations {
   waitlisted: RegistrationWithTicket[];
 }
 
+export interface CancelResult {
+  registration: RegistrationWithTicket;
+  // true only when this call performed the cancellation (false on a repeat).
+  cancelled: boolean;
+  alreadyCancelled: boolean;
+  // the waitlisted participant auto-promoted into the freed spot, if any.
+  promoted: RegistrationWithTicket | null;
+}
+
 @Injectable()
 export class RegistrationsService {
   constructor(
@@ -68,6 +77,101 @@ export class RegistrationsService {
         return this.upsertRegistered(tx, eventId, email, existing);
       }
       return this.upsertWaitlisted(tx, eventId, email, existing);
+    });
+  }
+
+  /**
+   * Cancel a participant's registration and, if a REGISTERED spot was freed,
+   * automatically promote the earliest WAITLISTED participant into it.
+   *
+   * Atomicity (req. 3): the cancellation, the freed-spot detection and the
+   * promotion all happen inside ONE transaction that holds the same event
+   * `FOR UPDATE` lock used by registration. This serializes cancels with each
+   * other AND with registrations, so a freed spot can never be handed to two
+   * participants, capacity can never be exceeded, and FIFO order is preserved.
+   *
+   * History is preserved: rows are flipped to CANCELLED, never deleted.
+   */
+  async cancel(eventId: string, rawEmail: string): Promise<CancelResult> {
+    const email = this.normalizeEmail(rawEmail);
+
+    return this.prisma.$transaction(async (tx) => {
+      // Lock the event row (also serves as existence check → 404).
+      const locked = await tx.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "Event" WHERE id = ${eventId} FOR UPDATE
+      `;
+      if (locked.length === 0) {
+        throw new NotFoundException(`Event ${eventId} not found`);
+      }
+
+      const reg = await tx.registration.findUnique({
+        where: { eventId_email: { eventId, email } },
+        include: { ticket: true },
+      });
+      if (!reg) {
+        throw new NotFoundException(
+          `No registration for ${email} on event ${eventId}`,
+        );
+      }
+
+      // Repeated cancellation is a no-op — never triggers another promotion.
+      if (reg.status === RegistrationStatus.CANCELLED) {
+        return {
+          registration: reg,
+          cancelled: false,
+          alreadyCancelled: true,
+          promoted: null,
+        };
+      }
+
+      const freesASpot = reg.status === RegistrationStatus.REGISTERED;
+
+      const cancelled = await tx.registration.update({
+        where: { id: reg.id },
+        data: { status: RegistrationStatus.CANCELLED, waitlistPos: null },
+        include: { ticket: true },
+      });
+
+      // Only a REGISTERED cancellation frees a seat to promote into.
+      const promoted = freesASpot ? await this.promoteHead(tx, eventId) : null;
+
+      return {
+        registration: cancelled,
+        cancelled: true,
+        alreadyCancelled: false,
+        promoted,
+      };
+    });
+  }
+
+  /**
+   * Promote the earliest WAITLISTED participant (lowest waitlistPos) to
+   * REGISTERED and mint a ticket. Returns null if the waitlist is empty.
+   * Must be called inside the event-locked transaction.
+   */
+  private async promoteHead(
+    tx: Prisma.TransactionClient,
+    eventId: string,
+  ): Promise<RegistrationWithTicket | null> {
+    const head = await tx.registration.findFirst({
+      where: { eventId, status: RegistrationStatus.WAITLISTED },
+      orderBy: [{ waitlistPos: 'asc' }, { createdAt: 'asc' }], // FIFO head
+      include: { ticket: true },
+    });
+    if (!head) {
+      return null;
+    }
+
+    const code = this.generateTicketCode();
+    return tx.registration.update({
+      where: { id: head.id },
+      data: {
+        status: RegistrationStatus.REGISTERED,
+        waitlistPos: null,
+        // Waitlisted rows have no ticket; mint one on promotion (req. 2).
+        ...(head.ticket ? {} : { ticket: { create: { code } } }),
+      },
+      include: { ticket: true },
     });
   }
 
@@ -135,11 +239,14 @@ export class RegistrationsService {
     email: string,
     existing: RegistrationWithTicket | null,
   ): Promise<RegistrationWithTicket> {
-    // FIFO position at the tail of the waitlist. Safe because we hold the lock.
-    const waitCount = await tx.registration.count({
+    // FIFO position at the tail of the waitlist: max existing position + 1.
+    // Using max (not count) keeps positions unique even after cancellations
+    // leave gaps in the sequence. Safe because we hold the event lock.
+    const maxPos = await tx.registration.aggregate({
       where: { eventId, status: RegistrationStatus.WAITLISTED },
+      _max: { waitlistPos: true },
     });
-    const waitlistPos = waitCount + 1;
+    const waitlistPos = (maxPos._max.waitlistPos ?? 0) + 1;
 
     if (existing) {
       return tx.registration.update({

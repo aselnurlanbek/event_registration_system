@@ -4,6 +4,45 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 21:51 KST — Phase 4: Cancellation & automatic waitlist promotion
+
+Added `POST /api/events/:eventId/registrations/cancel`. History is preserved — rows flip to `CANCELLED`, never deleted. No git commit.
+
+### Transactional behavior (the core requirement)
+- **One transaction, one lock, atomic cancel→promote.** `cancel()` opens `prisma.$transaction`, takes the **same** `SELECT id FROM "Event" WHERE id = $eventId FOR UPDATE` lock that registration uses, then within that single transaction: flips the target row to `CANCELLED`, and — only if the cancelled row was `REGISTERED` — promotes the earliest `WAITLISTED` participant (`ORDER BY waitlistPos ASC` head) to `REGISTERED` and mints its ticket. All committed together or not at all.
+- Because cancels and registrations share the same event-row lock, they are **fully serialized per event**. This makes the three forbidden states impossible:
+  - *capacity exceeded* — a promotion only ever runs in the same serialized critical section that just freed exactly one seat;
+  - *one spot to two waitlisters* — concurrent cancels can't both promote the same head; the second cancel re-reads the waitlist after the first commits;
+  - *broken FIFO* — the head is always the lowest `waitlistPos`.
+- **Idempotent repeat cancel (req. 5):** a row already `CANCELLED` returns `{ cancelled: false, alreadyCancelled: true, promoted: null }` and triggers no further promotion.
+- **Waitlisted cancel (req. 4):** marks the row `CANCELLED` with no promotion; remaining waitlisters keep their order (see positioning change below).
+- **404** for unknown event (empty lock result) or unknown registration.
+
+### Supporting change — gap-safe waitlist positions
+- Switched new-waitlister positioning from `count(WAITLISTED)+1` to **`max(waitlistPos)+1`**. After cancellations leave gaps, `count+1` could collide with an existing position; `max+1` stays unique and monotonic, so FIFO ordering survives arbitrary cancellations. No re-compaction needed — ordering is by `waitlistPos ASC`, and gaps don't affect relative order.
+
+### Response information (req. 7)
+`CancelResult`: `{ registration, cancelled, alreadyCancelled, promoted }`. `promoted` is the full promoted registration (with its new ticket) or `null` — so callers can tell whether someone was promoted and who.
+
+### Tests performed — all against REAL Postgres (no mocked transactions)
+`npm test` → **4 suites, 24 tests, all passing** (~2.5s). New `cancellation.integration.spec.ts` (8 cases), self-cleaning (verified 0 leftover rows):
+- REGISTERED cancel with empty waitlist → `CANCELLED`, no promotion, history row retained.
+- Auto-promotion of first waitlister → promoted to REGISTERED with a ticket (`/^[0-9A-F]{12}$/`).
+- FIFO promotion order → w1 then w2 promoted in sequence.
+- WAITLISTED cancel → marked CANCELLED, remaining `[a, c]` order preserved.
+- Repeated cancellation → idempotent, no extra promotion, still 1 registered.
+- 404 on cancelling a non-existent registration.
+- **Concurrent cancels, single waitlister** → exactly one promotion of C; final REGISTERED=1, CANCELLED=2, waitlist empty; C holds one ticket (proves one spot never goes to two people).
+- **Concurrent cancels, two waitlisters** → both promoted, REGISTERED=2 (capacity never exceeded), waitlist empty.
+- `npm run build` → exit 0.
+
+### Assumptions
+- Cancellation is by `{ email }` in the body (participant self-identifies by email, not internal id) — consistent with ARCHITECTURE §4.
+- A cancelled REGISTERED participant's **ticket row is retained** (history); check-in (Phase 5) will guard on status so a stale ticket can't be used.
+- No auth — anyone may cancel any email (trusted/demo context).
+
+---
+
 ## 2026-09-14 21:28 KST — Phase 3: Participant registration & waitlist
 
 Implemented `RegistrationsModule`: `POST /api/events/:eventId/registrations` and `GET /api/events/:eventId/registrations`. No participant cancellation/promotion yet (Phase 4). No git commit.

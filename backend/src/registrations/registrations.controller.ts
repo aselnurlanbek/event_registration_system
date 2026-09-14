@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { CancelRegistrationDto } from './dto/cancel-registration.dto';
 import { CreateRegistrationDto } from './dto/create-registration.dto';
 import { RegistrationsService } from './registrations.service';
 
@@ -12,6 +13,15 @@ export class RegistrationsController {
     @Body() dto: CreateRegistrationDto,
   ) {
     return this.registrations.register(eventId, dto.email);
+  }
+
+  @Post('cancel')
+  @HttpCode(200)
+  cancel(
+    @Param('eventId') eventId: string,
+    @Body() dto: CancelRegistrationDto,
+  ) {
+    return this.registrations.cancel(eventId, dto.email);
   }
 
   @Get()
