@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { CheckInModule } from './check-in/check-in.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { EmailModule } from './email/email.module';
@@ -8,11 +9,13 @@ import { HealthModule } from './health/health.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { RegistrationsModule } from './registrations/registrations.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
 
 @Module({
   imports: [
     // Loads .env and makes ConfigService available application-wide.
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(), // enables @Cron jobs
     PrismaModule,
     HealthModule,
     EventsModule,
@@ -21,8 +24,7 @@ import { RegistrationsModule } from './registrations/registrations.module';
     DashboardModule,
     RealtimeModule,
     EmailModule,
-    // Domain modules (Events, Registrations, CheckIn, Dashboard, Realtime,
-    // Email, Scheduler) are added in later phases — see docs/ARCHITECTURE.md §3.
+    SchedulerModule,
   ],
 })
 export class AppModule {}

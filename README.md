@@ -33,6 +33,15 @@ A `docker-compose.yml` at the repo root provides a Postgres 16 instance as an al
 | `POST` | `/events/:eventId/check-in` | Check in a ticket (`ticketCode`) — single-use; 200 / 409 / 404 |
 | `GET` | `/events/:eventId/stats` | `{ capacity, registered, waitlisted, checkedIn }` |
 | `GET` | `/dev/emails` | **Development-only** — inspect the mock email outbox (404 in production) |
+| `POST` | `/dev/reminders/run` | **Development-only** — manually trigger the reminder job (404 in production) |
+
+## Event reminders (background job)
+
+A cron job runs **every minute** (`@nestjs/schedule`) and sends each **currently REGISTERED** participant exactly **one** `EVENT_REMINDER`.
+
+- **Reminder window:** an event is "due" when its `startsAt` is within the next **24 hours** (`now < startsAt <= now + 24h`). Once an event enters the window, the next tick records reminders; a participant who registers later but still inside the window also gets their one reminder.
+- **Exactly-once / restart-safe:** the "already sent" state is **persisted in PostgreSQL** as `EmailLog` rows keyed by the unique `event-reminder:{eventId}:{registrationId}`. Re-runs, overlapping ticks, and backend restarts all skip already-recorded reminders — no in-memory flags involved. WAITLISTED and CANCELLED registrations are never reminded.
+- **Manual trigger (dev/demo):** `POST /api/dev/reminders/run` runs the job immediately and returns `{ eventsInWindow, remindersSent }` (disabled in production).
 
 ## WebSocket API (Socket.IO)
 

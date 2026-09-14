@@ -4,6 +4,43 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 22:37 KST — Phase 8: Event reminder background job
+
+Added a cron job that sends each REGISTERED participant exactly one `EVENT_REMINDER` ~24h before their event, reusing the Phase 6 email outbox for exactly-once delivery. No git commit.
+
+### What was implemented
+- **`ScheduleModule.forRoot()`** enabled in `AppModule`; new **`SchedulerModule`** with `ReminderService`.
+- **`ReminderService`** with `@Cron(EVERY_MINUTE)` → `processReminders(now = new Date())`:
+  - Finds events with `startsAt` in `(now, now + 24h]` (the reminder window).
+  - For each, records `EVENT_REMINDER` for every **currently REGISTERED** participant (WAITLISTED/CANCELLED excluded, reqs. 2–3), inside a per-event transaction.
+  - `now` is an injectable parameter for deterministic tests.
+- **Dev-only trigger:** `POST /api/dev/reminders/run` (`DevReminderController`) runs the job on demand and returns `{ eventsInWindow, remindersSent }`; 404 when `NODE_ENV=production` (req. 9).
+
+### Exactly-once / persistence strategy (reqs. 4–8)
+- No in-memory flags. Uniqueness is enforced by the email **`deduplicationKey`** `event-reminder:{eventId}:{registrationId}`, persisted in the `EmailLog` table (req. 5). `EmailService.recordInTx` uses `createMany({ skipDuplicates: true })`, so:
+  - re-running the job (overlapping ticks, manual + cron) inserts nothing the second time (reqs. 6–7),
+  - a **backend restart** cannot resend — the state is in Postgres, not the process (req. 6),
+  - a participant registering later but still in-window still gets their single reminder.
+- Chose **not** to gate on `Event.reminderSentAt`, since a coarse per-event flag would wrongly suppress reminders for participants who register after the first tick. Per-participant dedup is the authoritative guard.
+
+### Reminder window / scheduling assumptions
+- Window = event starts within the next **24h**. Job cadence = every minute (acceptable per the assignment). Documented in README.
+
+### Tests performed
+`npm test` → **10 suites, 48 tests, all passing** (~5s). New `reminder.integration.spec.ts` (real Postgres, 5), self-cleaning:
+- normal reminder → one per REGISTERED participant in-window.
+- WAITLISTED + CANCELLED excluded → only the REGISTERED one reminded.
+- repeated job runs (×3) → still exactly one reminder each (idempotent).
+- event outside the 24h window → no reminders.
+- **simulated backend restart** (fresh `ReminderService`/`EmailService` instances) → no resend; still exactly one.
+- `npm run build` → exit 0; DB self-cleaned to 0 rows.
+
+### Assumptions
+- Reminders reuse the mock outbox (no real delivery); the `EmailLog` row is the artifact.
+- Running the same job concurrently on multiple instances is still safe (unique key), though not required here.
+
+---
+
 ## 2026-09-14 22:30 KST — Phase 6: Mock email notification system
 
 Added a mock email system (no real provider) that records would-be emails to PostgreSQL as an idempotent outbox. No git commit.
