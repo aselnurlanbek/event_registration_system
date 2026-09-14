@@ -4,6 +4,25 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:49 KST — Phase A12: Organizer event detail page completed
+
+Filled out `/organizer/events/:eventId` (the live per-event dashboard) to the full spec. No git commit.
+
+### What was added/changed
+- **Event information block:** title (now the page heading), status badge, date/time, description, capacity (previously only the title showed).
+- **Live statistics:** Registered, Waitlisted, Checked In, and **Remaining capacity** (`max(0, capacity − registered)`) — replaced the redundant "Capacity" card (capacity is shown in the info block).
+- **Registered participants table:** added a **Ticket** column (ticket code) alongside email, registration time, and checked-in status.
+- **Waitlist table:** email, waitlist order (`waitlistPos`), registration time (already present).
+- **Actions (header):** **Edit event** (→ edit page), **Open check-in** (→ `/check-in/:id`), and **Cancel event** (soft-cancel with the clear confirmation dialog → returns to `/organizer` with a flash). Edit/Cancel show only while the event is ACTIVE.
+- **Realtime (already in place, verified):** `useEventRealtime` subscribes to the `event:{id}` room; on `event.stats.updated` (registration / cancellation / promotion / check-in) it applies the snapshot to the stats query and invalidates the registrations query, so the stats **and** both tables update without a manual refresh. On (re)connect it re-subscribes and refetches REST state.
+
+### Checks
+- `npm run typecheck` (`tsc -b`) → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (36 files).
+- Full `vite build` not re-run this iteration (declined); `tsc -b` validates compilation, bundler config unchanged.
+
+---
+
 ## 2026-09-15 00:45 KST — Phase A11: Organizer event management UI refinements
 
 Refined the create/edit/cancel UI per the detailed spec. No git commit.

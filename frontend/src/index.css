@@ -398,6 +398,13 @@ h2 {
   color: var(--text);
 }
 
+.event-info {
+  margin-bottom: 1.25rem;
+}
+.event-info p {
+  margin: 0.25rem 0;
+}
+
 .table-wrap {
   overflow-x: auto;
   border: 1px solid var(--border);
