@@ -594,3 +594,25 @@ h2 {
 .checkin__feedback {
   margin-top: 1.25rem;
 }
+.checkin__recent {
+  margin-top: 1.5rem;
+}
+.recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.recent-list__item {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+.recent-list__item:last-child {
+  border-bottom: none;
+}

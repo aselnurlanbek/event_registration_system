@@ -4,6 +4,25 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:53 KST — Phase A13: Organizer check-in experience
+
+Improved the check-in screen and moved it under the organizer event path. No git commit.
+
+### What changed
+- **Route:** `/check-in/:eventId` → **`/organizer/events/:eventId/check-in`** (still `RequireRole("ORGANIZER")` + backend owner-guarded). Updated the "Open check-in" link on the event dashboard; removed the stray organizer/check-in links from the public home page (they didn't belong there post-auth) — it now shows only "Details".
+- **Large ticket-code input** (unchanged) submitting to the existing `POST /events/:id/check-in`.
+- **Response messages (req. 3):** success → "Participant checked in successfully."; already used → **"Ticket already used."** (was a longer string); invalid → "Invalid ticket code."; not eligible → the backend message verbatim.
+- **Fast entry (req. 4):** on success the input clears and refocuses (already in place).
+- **Live counters (req. 5):** Registered, Checked In, and a new **Remaining arrivals** = `max(0, registered − checkedIn)` — all update live via `useEventRealtime`.
+- **Recent check-ins (req. 6):** a small list (latest 5) derived from the registrations list (`registered` rows with `checkedInAt`, sorted desc) — backend-supported, and it refreshes live because the realtime hook invalidates the registrations query on each check-in.
+
+### Checks
+- `npm run typecheck` (`tsc -b`) → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (36 files).
+- Full `vite build` not re-run this iteration (declined); `tsc -b` validates compilation, bundler config unchanged.
+
+---
+
 ## 2026-09-15 00:49 KST — Phase A12: Organizer event detail page completed
 
 Filled out `/organizer/events/:eventId` (the live per-event dashboard) to the full spec. No git commit.

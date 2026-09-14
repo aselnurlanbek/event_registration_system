@@ -45,10 +45,13 @@ export default function App() {
             element={<OrganizerEditEventPage />}
           />
           <Route
+            path="/organizer/events/:eventId/check-in"
+            element={<CheckInPage />}
+          />
+          <Route
             path="/organizer/events/:eventId"
             element={<OrganizerDashboardPage />}
           />
-          <Route path="/check-in/:eventId" element={<CheckInPage />} />
         </Route>
 
         <Route path="*" element={<NotFoundPage />} />

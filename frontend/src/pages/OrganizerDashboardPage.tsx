@@ -162,7 +162,10 @@ export default function OrganizerDashboardPage() {
               Edit event
             </Link>
           )}
-          <Link className="btn btn--sm" to={`/check-in/${eventId}`}>
+          <Link
+            className="btn btn--sm"
+            to={`/organizer/events/${eventId}/check-in`}
+          >
             Open check-in
           </Link>
           {isActive && (

@@ -33,18 +33,6 @@ export default function HomePage() {
                 <Link className="btn btn--sm" to={`/events/${event.id}`}>
                   Details
                 </Link>
-                <Link
-                  className="btn btn--sm btn--ghost"
-                  to={`/organizer/events/${event.id}`}
-                >
-                  Dashboard
-                </Link>
-                <Link
-                  className="btn btn--sm btn--ghost"
-                  to={`/check-in/${event.id}`}
-                >
-                  Check-in
-                </Link>
               </div>
             </li>
           ))}

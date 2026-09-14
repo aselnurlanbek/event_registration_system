@@ -4,6 +4,7 @@ import { useCheckIn } from '../api/checkin';
 import { ApiError } from '../api/client';
 import { useEventStats } from '../api/dashboard';
 import { useEvent } from '../api/events';
+import { useEventRegistrations } from '../api/registrations';
 import { useEventRealtime } from '../realtime/useEventRealtime';
 
 /** Map a failed check-in to a clear, user-facing message. */
@@ -12,13 +13,17 @@ function checkInErrorMessage(error: unknown): string {
     if (error.status === 404) return 'Invalid ticket code.';
     if (error.status === 409) {
       if (/already checked in/i.test(error.message)) {
-        return 'This ticket has already been checked in.';
+        return 'Ticket already used.';
       }
       return error.message; // cancelled / not eligible — show the API message
     }
     return error.message;
   }
   return error instanceof Error ? error.message : 'Something went wrong.';
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString();
 }
 
 export default function CheckInPage() {
@@ -28,9 +33,10 @@ export default function CheckInPage() {
 
   const event = useEvent(eventId);
   const stats = useEventStats(eventId);
+  const registrations = useEventRegistrations(eventId);
   const checkIn = useCheckIn(eventId);
 
-  // Keep the counters synchronized live over Socket.IO.
+  // Keep counters + recent list synchronized live over Socket.IO.
   useEventRealtime(eventId);
 
   // Focus the input on mount so the operator can type immediately.
@@ -52,12 +58,23 @@ export default function CheckInPage() {
   }
 
   const s = stats.data;
+  const remaining = s ? Math.max(0, s.registered - s.checkedIn) : null;
+
+  // Recent check-ins, derived from the registrations list (backend-supported).
+  const recent = (registrations.data?.registered ?? [])
+    .filter((r) => r.checkedInAt)
+    .sort(
+      (a, b) =>
+        new Date(b.checkedInAt as string).getTime() -
+        new Date(a.checkedInAt as string).getTime(),
+    )
+    .slice(0, 5);
 
   return (
     <section className="checkin">
       <p>
-        <Link to={`/events/${eventId}`} className="muted">
-          ← Event
+        <Link to={`/organizer/events/${eventId}`} className="muted">
+          ← Event dashboard
         </Link>
       </p>
       <h1>Check-in</h1>
@@ -65,12 +82,16 @@ export default function CheckInPage() {
 
       <div className="checkin__counters">
         <div className="counter">
+          <span className="counter__value">{s ? s.registered : '—'}</span>
+          <span className="counter__label">Registered</span>
+        </div>
+        <div className="counter">
           <span className="counter__value">{s ? s.checkedIn : '—'}</span>
           <span className="counter__label">Checked In</span>
         </div>
         <div className="counter">
-          <span className="counter__value">{s ? s.registered : '—'}</span>
-          <span className="counter__label">Registered</span>
+          <span className="counter__value">{remaining ?? '—'}</span>
+          <span className="counter__label">Remaining arrivals</span>
         </div>
       </div>
 
@@ -107,6 +128,22 @@ export default function CheckInPage() {
       {checkIn.isError && (
         <div className="notice notice--error checkin__feedback" role="alert">
           <p className="notice__title">{checkInErrorMessage(checkIn.error)}</p>
+        </div>
+      )}
+
+      {recent.length > 0 && (
+        <div className="checkin__recent">
+          <h2 className="section-title">Recent check-ins</h2>
+          <ul className="recent-list">
+            {recent.map((r) => (
+              <li key={r.id} className="recent-list__item">
+                <span>{r.email}</span>
+                <span className="muted">
+                  {r.checkedInAt ? formatTime(r.checkedInAt) : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </section>
