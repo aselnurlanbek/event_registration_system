@@ -194,6 +194,26 @@ h2 {
   background: rgba(37, 99, 235, 0.08);
   color: var(--primary-hover);
 }
+.btn--danger {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.btn--danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.danger-zone {
+  margin-top: 2rem;
+  padding: 1rem;
+  border: 1px solid #f3c4c4;
+  border-radius: var(--radius);
+  background: #fef2f2;
+}
+.danger-zone .section-title {
+  margin-top: 0;
+  color: var(--danger);
+}
 
 /* State components */
 .state {

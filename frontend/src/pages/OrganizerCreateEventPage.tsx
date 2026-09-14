@@ -9,7 +9,10 @@ export default function OrganizerCreateEventPage() {
   function handleSubmit(values: EventInput) {
     create.mutate(values, {
       onSuccess: (event) =>
-        navigate(`/organizer/events/${event.id}`, { replace: true }),
+        navigate(`/organizer/events/${event.id}`, {
+          replace: true,
+          state: { flash: 'Event created successfully.' },
+        }),
     });
   }
 

@@ -16,13 +16,14 @@ interface EventFormProps {
   onSubmit: (values: EventInput) => void;
 }
 
-// Convert an ISO string to the local value a <input type="datetime-local"> wants.
-function toLocalInput(iso: string): string {
+// Split an ISO string into local date (YYYY-MM-DD) + time (HH:mm) parts.
+function toLocalParts(iso: string): { date: string; time: string } {
   const d = new Date(iso);
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(
-    d.getHours(),
-  )}:${pad(d.getMinutes())}`;
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
 }
 
 function toMessage(error: unknown): string {
@@ -37,11 +38,11 @@ export default function EventForm({
   error,
   onSubmit,
 }: EventFormProps) {
+  const initialParts = initial ? toLocalParts(initial.startsAt) : null;
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
-  const [startsAt, setStartsAt] = useState(
-    initial ? toLocalInput(initial.startsAt) : '',
-  );
+  const [date, setDate] = useState(initialParts?.date ?? '');
+  const [time, setTime] = useState(initialParts?.time ?? '');
   const [capacity, setCapacity] = useState(
     initial ? String(initial.capacity) : '',
   );
@@ -50,17 +51,22 @@ export default function EventForm({
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!title.trim()) return setValidationError('Title is required.');
-    if (!startsAt) return setValidationError('Date and time are required.');
+    if (!date) return setValidationError('Date is required.');
+    if (!time) return setValidationError('Time is required.');
     const cap = Number(capacity);
     if (!Number.isInteger(cap) || cap < 1) {
       return setValidationError('Capacity must be a whole number of at least 1.');
+    }
+    // Combine local date + time, then convert to UTC ISO for the backend.
+    const combined = new Date(`${date}T${time}`);
+    if (Number.isNaN(combined.getTime())) {
+      return setValidationError('Please enter a valid date and time.');
     }
     setValidationError(null);
     onSubmit({
       title: title.trim(),
       description: description.trim() || undefined,
-      // datetime-local is local time → convert to UTC ISO for the backend.
-      startsAt: new Date(startsAt).toISOString(),
+      startsAt: combined.toISOString(),
       capacity: cap,
     });
   }
@@ -86,13 +92,23 @@ export default function EventForm({
         disabled={submitting}
       />
 
-      <label htmlFor="startsAt">Date &amp; time</label>
+      <label htmlFor="date">Date</label>
       <input
-        id="startsAt"
-        type="datetime-local"
+        id="date"
+        type="date"
         className="input"
-        value={startsAt}
-        onChange={(e) => setStartsAt(e.target.value)}
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+        disabled={submitting}
+      />
+
+      <label htmlFor="time">Time</label>
+      <input
+        id="time"
+        type="time"
+        className="input"
+        value={time}
+        onChange={(e) => setTime(e.target.value)}
         disabled={submitting}
       />
 

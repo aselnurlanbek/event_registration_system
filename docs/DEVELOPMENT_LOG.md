@@ -4,6 +4,28 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:45 KST — Phase A11: Organizer event management UI refinements
+
+Refined the create/edit/cancel UI per the detailed spec. No git commit.
+
+### What changed
+- **Separate Date + Time fields (req.):** `EventForm` now has distinct `<input type="date">` and `<input type="time">` (was a single `datetime-local`). They're combined into a local `Date` and converted to a UTC ISO string for the backend; edit prefill splits the stored ISO back into local date/time parts.
+- **Access control (req. 1):** `/organizer/events/new` and `/organizer/events/:eventId/edit` remain under the `RequireRole("ORGANIZER")` guard (and the backend enforces owner-only writes).
+- **Validation (reqs. 2, 3):** client checks title/date/time/capacity and rejects an unparseable date; the backend stays the final authority — its validation errors are surfaced inline in the form.
+- **Reschedule behavior (req. 4):** edit always sends `startsAt`, so a changed date/time triggers the backend's existing `EVENT_RESCHEDULED` notifications; an unchanged value round-trips to the same instant and sends nothing.
+- **Success confirmation (req. 5):** on create/update the app redirects to the event dashboard and shows a one-time success banner (via router `state.flash`); the `/organizer` list shows the same banner after an edit-page cancellation.
+- **Cancel with clear confirmation (req. 6):** added a "Danger zone" **Cancel event** action on the edit page with a confirmation dialog that spells out the impact — *"All registered and waitlisted participants will be notified by email and lose their spots… This cannot be undone."* (The list-view Cancel from the previous phase remains.) On success it returns to `/organizer` with a confirmation banner.
+
+### Checks
+- `npm run typecheck` (`tsc -b`) → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (36 files).
+- Full `vite build` not re-run this iteration (declined); `tsc -b` validates compilation and the bundler config is unchanged from prior green builds.
+
+### Minor note
+- The time field is minute-precision (HH:mm). Events created via the UI carry `:00` seconds, so an unrelated edit round-trips the same instant and won't spuriously trigger a reschedule email.
+
+---
+
 ## 2026-09-15 00:39 KST — Phase A10: Organizer dashboard + event create/edit/cancel
 
 Built the main organizer dashboard and event management UI. No git commit.

@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEventStats } from '../api/dashboard';
 import { useCancelEvent, useMyEvents } from '../api/organizer';
 import ErrorMessage from '../components/ErrorMessage';
@@ -88,6 +88,8 @@ function OrganizerEventCard({ event }: { event: EventDto }) {
 
 export default function OrganizerEventsPage() {
   const events = useMyEvents();
+  const location = useLocation();
+  const flash = (location.state as { flash?: string } | null)?.flash;
 
   return (
     <section>
@@ -97,6 +99,12 @@ export default function OrganizerEventsPage() {
           Create Event
         </Link>
       </div>
+
+      {flash && (
+        <div className="notice notice--success" role="status">
+          <p className="notice__title">{flash}</p>
+        </div>
+      )}
 
       {events.isLoading ? (
         <Loading message="Loading your events…" />

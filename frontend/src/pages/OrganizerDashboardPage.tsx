@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { useEventStats } from '../api/dashboard';
 import { useEvent } from '../api/events';
 import { useEventRegistrations, type ParticipantDto } from '../api/registrations';
@@ -82,6 +82,10 @@ function WaitlistTable({ rows }: { rows: ParticipantDto[] }) {
 export default function OrganizerDashboardPage() {
   const { eventId = '' } = useParams();
 
+  // One-time success confirmation passed via router state (create/edit).
+  const location = useLocation();
+  const flash = (location.state as { flash?: string } | null)?.flash;
+
   // Initial data over REST.
   const event = useEvent(eventId);
   const stats = useEventStats(eventId);
@@ -117,6 +121,12 @@ export default function OrganizerDashboardPage() {
       </p>
       <h1>Organizer dashboard</h1>
       {event.data && <p className="muted">{event.data.title}</p>}
+
+      {flash && (
+        <div className="notice notice--success" role="status">
+          <p className="notice__title">{flash}</p>
+        </div>
+      )}
 
       {s && (
         <div className="stat-grid">
