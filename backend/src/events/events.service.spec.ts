@@ -1,6 +1,6 @@
 import { NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Event } from '@prisma/client';
+import { Event, EventStatus } from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
@@ -12,6 +12,8 @@ const mockEvent = (overrides: Partial<Event> = {}): Event => ({
   description: 'A test event',
   startsAt: new Date('2026-10-01T18:00:00.000Z'),
   capacity: 100,
+  status: EventStatus.ACTIVE,
+  cancelledAt: null,
   reminderSentAt: null,
   organizerId: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
@@ -91,6 +93,7 @@ describe('EventsService', () => {
 
       expect(result).toBe(events);
       expect(prisma.event.findMany).toHaveBeenCalledWith({
+        where: { status: EventStatus.ACTIVE },
         orderBy: { startsAt: 'asc' },
       });
     });

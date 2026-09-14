@@ -45,6 +45,14 @@ export class CheckInService {
         `Ticket ${ticketCode} does not belong to event ${eventId}`,
       );
     }
+    // No check-in for a cancelled event.
+    const event = await this.prisma.event.findUnique({
+      where: { id: eventId },
+      select: { status: true },
+    });
+    if (event?.status === 'CANCELLED') {
+      throw new ConflictException(`Event ${eventId} is cancelled`);
+    }
     // Only a currently REGISTERED participant may check in (req. 2).
     if (ticket.registration.status !== RegistrationStatus.REGISTERED) {
       throw new ConflictException(

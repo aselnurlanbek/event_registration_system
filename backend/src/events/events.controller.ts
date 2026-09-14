@@ -50,10 +50,11 @@ export class EventsController {
     return this.eventsService.update(id, dto);
   }
 
+  // Soft-cancellation (keeps history) — see EventsService.cancelEvent.
   @Delete(':id')
   @UseGuards(JwtAuthGuard, RolesGuard, EventOwnerGuard)
   @Roles(Role.ORGANIZER)
   remove(@Param('id') id: string) {
-    return this.eventsService.remove(id);
+    return this.eventsService.cancelEvent(id);
   }
 }

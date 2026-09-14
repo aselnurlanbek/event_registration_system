@@ -4,6 +4,33 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:11 KST — Phase A6: Safe event cancellation (soft delete)
+
+Turned the `DELETE /api/events/:eventId` hard-delete into a **soft cancellation** that preserves history. Owner-only guard from the previous phase is unchanged. No git commit.
+
+### Schema (migration `..._event_soft_cancel`)
+- New `enum EventStatus { ACTIVE, CANCELLED }`; `Event.status @default(ACTIVE)` + `Event.cancelledAt DateTime?`. New `EmailType.EVENT_CANCELLED`. All additive.
+
+### Behavior (documented)
+- **`DELETE /api/events/:eventId`** (owner-only) now calls `EventsService.cancelEvent` → sets `status=CANCELLED` + `cancelledAt`; **no rows are destroyed** (req. 3). Idempotent (cancelling again is a no-op, no re-notify).
+- **Decisions on related data (req. 5):**
+  - *REGISTERED / WAITLISTED participants* — registration rows are **kept unchanged** as history; the event-level `CANCELLED` status is the source of truth for "event is off". Both groups are notified.
+  - *Tickets* — **kept** (history); they simply can't be checked in (see below).
+  - *Reminders* — the scheduler now filters `status: ACTIVE`, so a cancelled event gets **no further reminders** (req. 6).
+- **No new registrations (req. 4):** `register()` reads the event `status` under the same `FOR UPDATE` lock and throws `409` if CANCELLED — concurrency path unchanged otherwise.
+- **No check-in (req. 8):** `CheckInService` returns `409` if the event is CANCELLED.
+- **Visibility (req. 4):** public `GET /events` hides CANCELLED events; `GET /events/:id`, `GET /organizer/events` (organizer history), and `GET /me/registrations` (participant history, now includes `event.status`) all still show them.
+- **EVENT_CANCELLED email (req. 7):** on cancel, one mock email per affected (REGISTERED/WAITLISTED) participant via the outbox, dedupe key `event-cancelled:{eventId}:{registrationId}` → exactly-once even if cancel is retried.
+
+### Tests (req. 10)
+`npm test` → **15 suites, 81 tests, all passing**. New `event-cancellation.integration.spec.ts` (real Postgres, 6 cases): event + registrations + tickets preserved and 2 participants notified; idempotent re-cancel sends nothing further; new registration refused (409); check-in refused (409); reminders stop; public list hides it while participant history keeps it with `event.status = CANCELLED`. Updated `event-ownership.integration.spec.ts` (DELETE now asserts soft-cancel, row preserved) and `events.service.spec.ts` (`findAll` filters ACTIVE; `mockEvent` gains `status`/`cancelledAt`).
+- `npm run build` → exit 0.
+
+### Notes
+- Chose soft-cancel over a `deletedAt` tombstone because a first-class `status` reads clearly at every call site (register lock, check-in, reminders, list filters) and leaves room for future states. The old hard-delete `remove()` was replaced by `cancelEvent()`.
+
+---
+
 ## 2026-09-15 00:02 KST — Phase A3/A5: Organizer event ownership
 
 Added ownership so organizers manage only their own events. Additive; reschedule/registration logic unchanged. No git commit.

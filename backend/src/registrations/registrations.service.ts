@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   EmailType,
   Prisma,
@@ -34,6 +38,7 @@ export interface MyRegistration {
     description: string | null;
     startsAt: Date;
     capacity: number;
+    status: string;
   };
 }
 
@@ -77,11 +82,17 @@ export class RegistrationsService {
       // 1. Serialize all registrations for THIS event. Concurrent transactions
       //    block on this lock until the holder commits. Also acts as the
       //    existence check (empty result => no such event).
-      const locked = await tx.$queryRaw<{ id: string; capacity: number }[]>`
-        SELECT id, capacity FROM "Event" WHERE id = ${eventId} FOR UPDATE
+      const locked = await tx.$queryRaw<
+        { id: string; capacity: number; status: string }[]
+      >`
+        SELECT id, capacity, status FROM "Event" WHERE id = ${eventId} FOR UPDATE
       `;
       if (locked.length === 0) {
         throw new NotFoundException(`Event ${eventId} not found`);
+      }
+      // A cancelled event accepts no new registrations.
+      if (locked[0].status === 'CANCELLED') {
+        throw new ConflictException(`Event ${eventId} is cancelled`);
       }
       const capacity = locked[0].capacity;
 
@@ -283,6 +294,7 @@ export class RegistrationsService {
         description: r.event.description,
         startsAt: r.event.startsAt,
         capacity: r.event.capacity,
+        status: r.event.status,
       },
     }));
   }

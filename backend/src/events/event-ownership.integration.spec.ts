@@ -166,7 +166,8 @@ describe('Event ownership (integration, real Postgres)', () => {
       .set(bearer(org1Token))
       .expect(200);
 
-    const gone = await prisma.event.findUnique({ where: { id: eventId } });
-    expect(gone).toBeNull();
+    // Soft-cancel: the row is preserved as history, flagged CANCELLED.
+    const row = await prisma.event.findUnique({ where: { id: eventId } });
+    expect(row?.status).toBe('CANCELLED');
   });
 });

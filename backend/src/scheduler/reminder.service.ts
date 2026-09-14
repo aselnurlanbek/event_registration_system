@@ -43,7 +43,8 @@ export class ReminderService {
     const windowEnd = new Date(now.getTime() + this.windowHours * 3_600_000);
 
     const events = await this.prisma.event.findMany({
-      where: { startsAt: { gt: now, lte: windowEnd } },
+      // Cancelled events get no reminders.
+      where: { status: 'ACTIVE', startsAt: { gt: now, lte: windowEnd } },
       select: { id: true },
     });
 

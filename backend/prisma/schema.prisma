@@ -26,12 +26,21 @@ model User {
   events        Event[]
 }
 
+enum EventStatus {
+  ACTIVE
+  CANCELLED
+}
+
 model Event {
   id             String         @id @default(cuid())
   title          String
   description    String?
   startsAt       DateTime
   capacity       Int
+  // Soft-cancellation: the event and its history are preserved; CANCELLED events
+  // reject new registrations and check-ins.
+  status         EventStatus    @default(ACTIVE)
+  cancelledAt    DateTime?
   reminderSentAt DateTime? // coarse guard; per-participant guard is EmailLog
   // Owning organizer. Nullable for backward compat with pre-ownership events.
   organizer      User?          @relation(fields: [organizerId], references: [id])
@@ -85,6 +94,7 @@ enum EmailType {
   WAITLIST_PROMOTED
   EVENT_REMINDER
   EVENT_RESCHEDULED
+  EVENT_CANCELLED
 }
 
 // Mock email outbox + idempotency ledger. A row IS the record of a (would-be)

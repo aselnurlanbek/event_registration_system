@@ -1,5 +1,11 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { Event, EmailType, Prisma, RegistrationStatus } from '@prisma/client';
+import {
+  Event,
+  EmailType,
+  EventStatus,
+  Prisma,
+  RegistrationStatus,
+} from '@prisma/client';
 import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
@@ -27,11 +33,15 @@ export class EventsService {
     });
   }
 
+  /** Public browse — only ACTIVE events (cancelled ones are hidden here). */
   async findAll(): Promise<Event[]> {
-    return this.prisma.event.findMany({ orderBy: { startsAt: 'asc' } });
+    return this.prisma.event.findMany({
+      where: { status: EventStatus.ACTIVE },
+      orderBy: { startsAt: 'asc' },
+    });
   }
 
-  /** Events owned by a specific organizer (for GET /organizer/events). */
+  /** Events owned by an organizer (incl. cancelled, for organizer history). */
   async findByOrganizer(organizerId: string): Promise<Event[]> {
     return this.prisma.event.findMany({
       where: { organizerId },
@@ -39,11 +49,68 @@ export class EventsService {
     });
   }
 
-  /** Delete an event (cascade removes registrations/tickets/emails). */
-  async remove(id: string): Promise<{ id: string }> {
-    await this.findOne(id); // 404 if missing
-    await this.prisma.event.delete({ where: { id } });
-    return { id };
+  /**
+   * Soft-cancel an event (DELETE endpoint). No rows are destroyed — the event is
+   * flagged CANCELLED and kept for history. See docs for full behavior:
+   * - new registrations and check-ins are refused (enforced in those services);
+   * - future reminders stop (the scheduler skips non-ACTIVE events);
+   * - existing REGISTERED/WAITLISTED rows + tickets are preserved as history;
+   * - affected participants get one EVENT_CANCELLED email (idempotent).
+   * Idempotent: cancelling an already-cancelled event is a no-op.
+   */
+  async cancelEvent(id: string): Promise<{
+    eventId: string;
+    status: EventStatus;
+    alreadyCancelled: boolean;
+    notified: number;
+  }> {
+    const event = await this.findOne(id); // 404 if missing
+    if (event.status === EventStatus.CANCELLED) {
+      return {
+        eventId: id,
+        status: EventStatus.CANCELLED,
+        alreadyCancelled: true,
+        notified: 0,
+      };
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.event.update({
+        where: { id },
+        data: { status: EventStatus.CANCELLED, cancelledAt: new Date() },
+      });
+
+      // Notify everyone with an active (REGISTERED or WAITLISTED) registration.
+      const affected = await tx.registration.findMany({
+        where: {
+          eventId: id,
+          status: {
+            in: [RegistrationStatus.REGISTERED, RegistrationStatus.WAITLISTED],
+          },
+        },
+      });
+      const notified = await this.email.recordInTx(
+        tx,
+        affected.map((r) => ({
+          type: EmailType.EVENT_CANCELLED,
+          recipient: r.email,
+          eventId: id,
+          registrationId: r.id,
+          deduplicationKey: `event-cancelled:${id}:${r.id}`,
+          payload: {
+            title: event.title,
+            startsAt: event.startsAt.toISOString(),
+          },
+        })),
+      );
+
+      return {
+        eventId: id,
+        status: EventStatus.CANCELLED,
+        alreadyCancelled: false,
+        notified,
+      };
+    });
   }
 
   async findOne(id: string): Promise<Event> {
