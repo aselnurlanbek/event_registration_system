@@ -4,6 +4,38 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 22:45 KST — Phase 10: Frontend foundation (routing, API client, providers)
+
+Built the frontend skeleton on top of the Phase 0 scaffold (React + TS + Vite + TanStack Query + Socket.IO client already present). Added React Router; realtime behavior intentionally left as infrastructure only. No git commit.
+
+### What was implemented
+- **React Router v7** wired in `main.tsx` (`BrowserRouter`) with routes in `App.tsx` under a shared `Layout`:
+  - `/` → `HomePage` (lists events)
+  - `/events/:eventId` → `EventDetailPage`
+  - `/organizer/events/:eventId` → `OrganizerDashboardPage`
+  - `/check-in/:eventId` → `CheckInPage`
+  - `*` → `NotFoundPage`
+- **Reusable API client** (`api/client.ts`, from Phase 0): `apiFetch<T>` wrapper; **backend URL from `VITE_API_URL`** (Socket.IO from `VITE_SOCKET_URL`). Added `api/events.ts` (TanStack Query hooks `useEvents`/`useEvent` + `eventKeys`) and shared `types.ts`.
+- **Common components:** `Layout` (header/nav + `Outlet` + footer), `Loading` (spinner + message), `ErrorMessage` (message + optional retry).
+- **TanStack Query** configured (shared `QueryClient`, `QueryClientProvider` + devtools in `main.tsx`).
+- **Socket.IO infrastructure** (`realtime/socket.ts`): singleton `getSocket`, `subscribeToEvent`/`unsubscribeFromEvent`, `onStatsUpdated(handler)`. Aligned message names to the backend gateway (`subscribe`/`unsubscribe`, `event.stats.updated`) — the previous Phase-0 stub used stale `join`/`leave`. Not yet wired into any page (per this phase's scope).
+- **Styling:** hand-written CSS (`index.css`) — clean, professional, no UI framework. Home lists events as cards with Details / Dashboard / Check-in links; detail/organizer/check-in pages fetch the event and show a labelled placeholder for the feature landing in a later phase.
+- **`.env.example`** present (`VITE_API_URL`, `VITE_SOCKET_URL`).
+
+### Checks
+- `npm run typecheck` (`tsc -b`) → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** across 17 files.
+- `npm run build` (`tsc -b` + vite) → success.
+- *Gotcha:* oxlint hit the same npm optional-native-binding bug as rolldown in Phase 0 (`@oxlint/binding-darwin-arm64` not auto-installed on Node 20.17); installed it manually. Upgrading Node clears this class of issue.
+
+### Docs
+- README updated with a **frontend getting-started** section (env vars, scripts, route table).
+
+### Notes
+- Registration form, live dashboard stats, and the check-in form are deliberately deferred to later phases; the pages render placeholders and already consume the API client + common components.
+
+---
+
 ## 2026-09-14 22:37 KST — Phase 8: Event reminder background job
 
 Added a cron job that sends each REGISTERED participant exactly one `EVENT_REMINDER` ~24h before their event, reusing the Phase 6 email outbox for exactly-once delivery. No git commit.

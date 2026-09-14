@@ -19,6 +19,26 @@ npm test                      # unit + integration (needs a running Postgres)
 
 A `docker-compose.yml` at the repo root provides a Postgres 16 instance as an alternative to a local install.
 
+## Getting started (frontend)
+
+```bash
+cd frontend
+cp .env.example .env          # set VITE_API_URL / VITE_SOCKET_URL (defaults point at :5050)
+npm install
+npm run dev                   # http://localhost:5173
+npm run build                 # type-check (tsc -b) + production build
+npm run lint                  # oxlint
+```
+
+The backend URL is read from the `VITE_API_URL` environment variable (REST) and `VITE_SOCKET_URL` (Socket.IO). Routes:
+
+| Path | Page |
+|---|---|
+| `/` | Event list |
+| `/events/:eventId` | Event detail (registration UI later) |
+| `/organizer/events/:eventId` | Organizer dashboard (live stats later) |
+| `/check-in/:eventId` | Check-in screen (ticket form later) |
+
 ## REST API (base path `/api`)
 
 | Method | Path | Purpose |
