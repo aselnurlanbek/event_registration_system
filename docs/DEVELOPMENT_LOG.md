@@ -4,6 +4,46 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-14 21:28 KST — Phase 3: Participant registration & waitlist
+
+Implemented `RegistrationsModule`: `POST /api/events/:eventId/registrations` and `GET /api/events/:eventId/registrations`. No participant cancellation/promotion yet (Phase 4). No git commit.
+
+### Concurrency approach (the key requirement)
+- **Pessimistic row lock inside a single interactive transaction.** Each `register()` opens `prisma.$transaction`, and the first statement is a raw `SELECT id, capacity FROM "Event" WHERE id = $eventId FOR UPDATE`. This locks the event row, so all concurrent registrations for the same event are **serialized**: the "count REGISTERED → decide REGISTERED/WAITLISTED → insert" sequence can never interleave.
+- Under default **READ COMMITTED** isolation this is sufficient — the second transaction blocks on the lock, then re-reads the now-committed count and is correctly waitlisted.
+- **Why this over the alternatives:** simplest reliable option. Serializable isolation would also work but needs client-side retry loops on 40001 serialization failures (more code); an app-level mutex/atomic counter wouldn't survive multiple backend instances. A single-row `FOR UPDATE` has no deadlock risk and needs no retries. (See ARCHITECTURE §8.)
+- The lock query doubles as the **event existence check** — an empty result throws `NotFoundException` (404).
+
+### Database constraints
+- `@@unique([eventId, email])` on `Registration` — the DB-level backstop guaranteeing one row per (event, email) even if application logic were bypassed. Looked up via the generated `eventId_email` compound key for the app-level idempotency check.
+- `Ticket.code @unique` and `Ticket.registrationId @unique` — unique ticket codes; one ticket per registration.
+- Both layers of duplicate protection are exercised: app-level (return existing active registration) + DB constraint.
+
+### Behaviour implemented
+- REGISTERED when `count(REGISTERED) < capacity`, else WAITLISTED (reqs. 2–3).
+- **FIFO waitlist:** `waitlistPos = count(WAITLISTED) + 1`, assigned under the lock; list ordered by `waitlistPos`.
+- **Ticket generated only for REGISTERED** (12 uppercase hex chars via `crypto.randomBytes`); waitlisted participants get no ticket (reqs. 6–7).
+- **Idempotent duplicate registration** (req. 1): an existing REGISTERED/WAITLISTED row is returned unchanged; a CANCELLED row is revived (re-evaluated against capacity).
+- Email normalized (trim + lowercase) before storage/lookup.
+- `GET` returns `{ eventId, counts: { registered, waitlisted }, registered[], waitlisted[] }`.
+
+### Tests performed — all against REAL Postgres (no mocked transactions)
+`npm test` → **3 suites, 16 tests, all passing** (~2.9s). New `registrations.integration.spec.ts` (5 cases) connects to the local `event_registration` DB via a real `PrismaService`, and is **self-cleaning** (tracks created event ids, cascade-deletes in `afterAll`; verified 0 leftover rows afterward):
+- registration when capacity exists → REGISTERED + ticket (`/^[0-9A-F]{12}$/`), `waitlistPos` null.
+- registration when full → WAITLISTED, `waitlistPos` 1, no ticket.
+- duplicate email (case-insensitive) → same registration id, DB row count stays 1.
+- FIFO waitlist ordering → positions 1/2/3, list order matches insertion order.
+- **two concurrent users for the last seat** (capacity 10, 9 pre-filled, 2 fired via `Promise.all`) → asserts statuses sort to exactly `[REGISTERED, WAITLISTED]` and DB counts are **REGISTERED = 10 (never 11), WAITLISTED = 1**.
+- `npm run build` → exit 0.
+
+### Assumptions
+- **Email identity is case-insensitive** and trimmed; `bob@x.com` == `BOB@x.com` for the same event.
+- No authentication — anyone can register any email (trusted/demo context, consistent with earlier phases).
+- CANCELLED-revival path is implemented defensively even though cancellation isn't exposed until Phase 4.
+- Ticket-code collisions are handled by the `@unique` constraint; with 48 bits of randomness they are astronomically unlikely at assignment scale, so no explicit retry loop was added.
+
+---
+
 ## 2026-09-14 21:10 KST — Phase 2: Events module
 
 Implemented the Events domain module (CRUD, no participant registration yet). No git commit.
