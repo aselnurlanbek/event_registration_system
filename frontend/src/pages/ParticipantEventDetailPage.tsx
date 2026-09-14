@@ -2,8 +2,10 @@ import { Link, useParams } from 'react-router-dom';
 import { useEvent } from '../api/events';
 import { useMyRegistrations } from '../api/me';
 import { useCancelRegistration, useRegister } from '../api/registrations';
+import { useAuth } from '../auth/context';
 import ErrorMessage from '../components/ErrorMessage';
 import Loading from '../components/Loading';
+import TicketCard from '../components/TicketCard';
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -11,6 +13,7 @@ function formatDate(iso: string): string {
 
 export default function ParticipantEventDetailPage() {
   const { eventId = '' } = useParams();
+  const { user } = useAuth();
   const event = useEvent(eventId);
   const mine = useMyRegistrations();
   const register = useRegister(eventId);
@@ -56,20 +59,15 @@ export default function ParticipantEventDetailPage() {
       {/* Current registration state — backend is the source of truth. */}
       {active ? (
         <div className="register__result">
-          {active.status === 'REGISTERED' ? (
-            <div className="notice notice--success" role="status">
-              <p className="notice__title">You’re registered 🎉</p>
-              {active.ticketCode && (
-                <p>
-                  Ticket: <code className="ticket-code">{active.ticketCode}</code>
-                </p>
-              )}
-              <p className="muted">
-                {active.checkedInAt
-                  ? `Checked in ${formatDate(active.checkedInAt)}`
-                  : 'Not checked in yet'}
-              </p>
-            </div>
+          {active.status === 'REGISTERED' && active.ticketCode ? (
+            <TicketCard
+              eventTitle={ev.title}
+              startsAt={ev.startsAt}
+              email={user?.email ?? ''}
+              ticketCode={active.ticketCode}
+              checkedInAt={active.checkedInAt}
+              eventCancelled={eventCancelled}
+            />
           ) : (
             <div className="notice notice--warning" role="status">
               <p className="notice__title">You’re on the waitlist</p>

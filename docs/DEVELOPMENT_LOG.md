@@ -4,6 +4,26 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:32 KST — Phase A9: Participant ticket card
+
+Added a reusable, read-only ticket card for REGISTERED participants. No git commit.
+
+### What was implemented
+- **`TicketCard` component** (`components/TicketCard.tsx`) showing: event title, event date/time, participant email, a **prominent, copyable ticket code**, and a status pill:
+  - `VALID` (registered, not checked in),
+  - `CHECKED IN` (when `checkedInAt` is set — also shows "✓ Checked in <time>"),
+  - `EVENT CANCELLED` (when the event is cancelled).
+- **Copy-to-clipboard:** a Copy button (`navigator.clipboard.writeText`) with a brief "Copied!" confirmation; the code also has `user-select: all` for easy manual selection. No QR (code-only, per the assignment).
+- **Shown in both places:** the `/participant` dashboard "My registrations" cards and the `/participant/events/:eventId` detail page render the ticket card for REGISTERED entries (replacing the earlier inline code line). WAITLISTED/CANCELLED rows keep a simple status badge.
+- **Read-only / no self check-in (req.):** the card only *displays* check-in state; there is no participant-facing action to change it (check-in remains an organizer-owner-only backend operation). Participant email comes from the auth context (their own ticket).
+
+### Checks
+- `npm run typecheck` → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (32 files).
+- `npm run build` → success.
+
+---
+
 ## 2026-09-15 00:27 KST — Phase A8: Participant dashboard & event pages
 
 Built the participant experience on the account/auth foundation. No git commit.

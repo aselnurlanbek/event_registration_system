@@ -5,6 +5,7 @@ import { useCancelRegistration } from '../api/registrations';
 import { useAuth } from '../auth/context';
 import ErrorMessage from '../components/ErrorMessage';
 import Loading from '../components/Loading';
+import TicketCard from '../components/TicketCard';
 import type { RegistrationStatus } from '../types';
 
 function formatDate(iso: string): string {
@@ -26,11 +27,18 @@ function StatusBadge({ status }: { status: RegistrationStatus }) {
   return <span className={cls}>{status}</span>;
 }
 
-function MyRegistrationCard({ reg }: { reg: MyRegistration }) {
+function MyRegistrationCard({
+  reg,
+  email,
+}: {
+  reg: MyRegistration;
+  email: string;
+}) {
   const cancel = useCancelRegistration(reg.event.id);
   const canCancel =
     (reg.status === 'REGISTERED' || reg.status === 'WAITLISTED') &&
     reg.event.status === 'ACTIVE';
+  const showTicket = reg.status === 'REGISTERED' && !!reg.ticketCode;
 
   return (
     <li className="card">
@@ -38,33 +46,33 @@ function MyRegistrationCard({ reg }: { reg: MyRegistration }) {
         <h3 className="card__title">
           <Link to={`/participant/events/${reg.event.id}`}>
             {reg.event.title}
-          </Link>{' '}
-          {reg.event.status === 'CANCELLED' && (
-            <span className="badge badge--muted">EVENT CANCELLED</span>
-          )}
+          </Link>
         </h3>
         <p className="muted">{formatDate(reg.event.startsAt)}</p>
-        <p>
-          <StatusBadge status={reg.status} />
-          {reg.status === 'REGISTERED' && (
-            <span className="muted">
-              {' '}
-              ·{' '}
-              {reg.checkedInAt
-                ? `Checked in ${formatDate(reg.checkedInAt)}`
-                : 'Not checked in'}
-            </span>
-          )}
-        </p>
-        {reg.status === 'REGISTERED' && reg.ticketCode && (
+
+        {showTicket ? (
+          <TicketCard
+            eventTitle={reg.event.title}
+            startsAt={reg.event.startsAt}
+            email={email}
+            ticketCode={reg.ticketCode as string}
+            checkedInAt={reg.checkedInAt}
+            eventCancelled={reg.event.status === 'CANCELLED'}
+          />
+        ) : (
           <p>
-            Ticket: <code className="ticket-code">{reg.ticketCode}</code>
+            <StatusBadge status={reg.status} />
+            {reg.status === 'WAITLISTED' && reg.waitlistPos != null && (
+              <span className="muted"> · position {reg.waitlistPos}</span>
+            )}
+            {reg.event.status === 'CANCELLED' && (
+              <span className="badge badge--muted"> EVENT CANCELLED</span>
+            )}
           </p>
         )}
+
         {cancel.isError && (
-          <p className="field-error">
-            {(cancel.error as Error).message}
-          </p>
+          <p className="field-error">{(cancel.error as Error).message}</p>
         )}
       </div>
       {canCancel && (
@@ -148,7 +156,7 @@ export default function ParticipantDashboardPage() {
       ) : (
         <ul className="card-list">
           {mine.data.map((reg) => (
-            <MyRegistrationCard key={reg.id} reg={reg} />
+            <MyRegistrationCard key={reg.id} reg={reg} email={user?.email ?? ''} />
           ))}
         </ul>
       )}

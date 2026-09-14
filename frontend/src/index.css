@@ -410,6 +410,82 @@ h2 {
   border-color: var(--border);
 }
 
+/* Ticket card */
+.ticket {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, #eef2ff 0%, #ffffff 60%);
+  padding: 1rem;
+  max-width: 460px;
+}
+.ticket__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.ticket__title {
+  font-weight: 700;
+  margin: 0;
+}
+.ticket__meta {
+  margin: 0.1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.ticket__status {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+.ticket__status--valid {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+.ticket__status--in {
+  background: #f0fdf4;
+  color: #15803d;
+  border-color: #b7e4c7;
+}
+.ticket__status--cancelled {
+  background: #fef2f2;
+  color: var(--danger);
+  border-color: #f3c4c4;
+}
+.ticket__code-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+.ticket__code {
+  flex: 1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: center;
+  padding: 0.5rem 0.75rem;
+  background: #ffffff;
+  border: 1px dashed #c7d2fe;
+  border-radius: var(--radius);
+  user-select: all;
+  overflow-x: auto;
+}
+.ticket__checked {
+  margin: 0.75rem 0 0;
+  color: #15803d;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
 /* Check-in screen */
 .checkin {
   max-width: 560px;
