@@ -4,6 +4,31 @@ Chronological record of decisions and progress. Newest entries at the top.
 
 ---
 
+## 2026-09-15 00:21 KST — Phase A7: Frontend authentication
+
+Added login/register, JWT-backed auth state, protected routes, and role redirects. No git commit.
+
+### What was implemented
+- **Routes:** `/login` (email + password) and `/register` (email + password + account-type select: PARTICIPANT / ORGANIZER).
+- **Auth state (`AuthContext`):** holds `{ user, token }`, exposes `login`/`register`/`logout`. Persisted to `localStorage` and hydrated synchronously on load (no flash); on mount it verifies the token via `GET /auth/me` and refreshes the user. Kept intentionally simple — no refresh tokens/rotation (req. 10).
+- **JWT on requests:** `apiFetch` attaches `Authorization: Bearer <token>` when a token is set (`setAuthToken`). Auth API in `api/auth.ts` (`loginRequest`/`registerRequest`/`fetchMe`).
+- **Graceful expiry (req. 9):** a `401` on an *authenticated* request invokes a registered handler (`setUnauthorizedHandler`) that logs out and clears storage; `RequireRole` then redirects to `/login`. A failed *login* (no token attached) does NOT trigger logout, so bad credentials just show an inline error.
+- **Protected routes + role redirect (reqs. 6, 7):** `RequireRole` layout guard — unauthenticated → `/login`; wrong role → the user's own home. After login/register the app navigates by role: PARTICIPANT → `/participant`, ORGANIZER → `/organizer` (landing pages added; full dashboards are later phases). Organizer-only areas (`/organizer`, `/organizer/events/:id`, `/check-in/:id`) are now behind the guard.
+- **Logout (req. 8):** header shows the signed-in email + role with a Log out button; clears state and navigates to `/login`. Logged-out header shows Log in / Sign up.
+
+### Code organization note
+Split the non-component exports (`useAuth`, `roleHome`, the context object) into `auth/context.ts`, leaving `auth/AuthContext.tsx` to export only the `AuthProvider` component — this keeps React Fast Refresh happy (lint went from 2 warnings to **0**).
+
+### Checks
+- `npm run typecheck` → clean.
+- `npm run lint` (oxlint) → **0 warnings, 0 errors** (30 files).
+- `npm run build` → success.
+
+### Notes
+- The public event-detail register button will 401 for logged-out visitors (backend now requires a PARTICIPANT JWT); refining that UX (prompt to log in) belongs to the participant-experience phase.
+
+---
+
 ## 2026-09-15 00:11 KST — Phase A6: Safe event cancellation (soft delete)
 
 Turned the `DELETE /api/events/:eventId` hard-delete into a **soft cancellation** that preserves history. Owner-only guard from the previous phase is unchanged. No git commit.

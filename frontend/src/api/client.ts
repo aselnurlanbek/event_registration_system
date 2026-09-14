@@ -14,20 +14,43 @@ export class ApiError extends Error {
   }
 }
 
+// --- auth wiring (set by AuthContext) ------------------------------------
+let authToken: string | null = null;
+let onUnauthorized: (() => void) | null = null;
+
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
 /**
- * Thin fetch wrapper. Parses JSON, throws on non-2xx responses so TanStack
- * Query can surface errors. Domain-specific hooks are added in later phases.
+ * Thin fetch wrapper. Attaches the JWT (when set), parses JSON, and throws
+ * ApiError on non-2xx. If an *authenticated* request comes back 401 (expired /
+ * invalid token), the registered unauthorized handler is invoked so the app can
+ * clear session state gracefully.
  */
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...options.headers,
+    },
     ...options,
   });
 
   if (!res.ok) {
+    // Only treat 401 as a session problem when we actually sent a token — a
+    // failed login (no token) must not trigger a global logout.
+    if (res.status === 401 && authToken) {
+      onUnauthorized?.();
+    }
     let message = `Request failed with status ${res.status}`;
     try {
       const body = (await res.json()) as { message?: string };
